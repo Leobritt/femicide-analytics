@@ -3,7 +3,7 @@
 Rodar na raiz do projeto:
     streamlit run dashboard/app.py
 
-Lê somente as tabelas de agregação (agg_*) e a tabela ocorrencias com filtros,
+Faz uma única consulta à tabela ocorrencias (em cache) e agrega em pandas;
 nunca exibe registros individuais.
 """
 import os
@@ -25,13 +25,25 @@ ORDEM_FAIXA = ["0-17", "18-29", "30-39", "40-59", "60+", "NÃO INFORMADO"]
 st.set_page_config(page_title="Feminicídio Interseccional — ES", layout="wide")
 
 
-@st.cache_data(ttl=600)
-def consulta(sql: str, params: tuple = ()) -> pd.DataFrame:
+COLUNAS = ["ano", "municipio", "feminicidio", "raca_cor", "raca_negra", "faixa_etaria",
+           "tipo_local", "meio_empregado", "grupo_relacao"]
+
+
+@st.cache_data(ttl=3600)
+def carregar_base() -> pd.DataFrame:
+    """Uma conexão e uma consulta; só as colunas usadas pelos gráficos."""
     with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, params)
-            cols = [c[0] for c in cur.description]
-            return pd.DataFrame(cur.fetchall(), columns=cols)
+            cur.execute(f"SELECT {', '.join(COLUNAS)} FROM ocorrencias")
+            return pd.DataFrame(cur.fetchall(), columns=COLUNAS)
+
+
+def contar(df: pd.DataFrame, por) -> pd.DataFrame:
+    """Equivale a COUNT(*) FILTER (WHERE feminicidio) / (WHERE NOT feminicidio) ... GROUP BY por.
+    feminicidio pode ser NULL: entra no grupo, mas não em nenhuma das duas contagens (como no SQL)."""
+    return (df.assign(**{"Feminicídio": df["feminicidio"].eq(True),
+                         "Homicídio doloso": df["feminicidio"].eq(False)})
+              .groupby(por)[["Feminicídio", "Homicídio doloso"]].sum().reset_index())
 
 
 def layout(fig, altura=360):
@@ -48,31 +60,30 @@ st.title("Homicídios de mulheres e feminicídios — Espírito Santo")
 st.caption("Fonte: SESP-ES, Portal de Dados Abertos (dados.es.gov.br). Dados agregados; "
            "nenhum caso individual é exibido.")
 
-anos = consulta("SELECT DISTINCT ano FROM ocorrencias ORDER BY ano")["ano"].tolist()
-municipios = consulta("SELECT DISTINCT municipio FROM ocorrencias ORDER BY municipio")["municipio"].tolist()
+if st.sidebar.button("Recarregar dados", help="Limpa o cache; use depois de rodar o ETL de novo."):
+    st.cache_data.clear()
+
+base = carregar_base()
+anos = sorted(base["ano"].unique().tolist())
+municipios = sorted(base["municipio"].unique().tolist())
 
 c1, c2, c3 = st.columns([2, 2, 1])
 faixa_anos = c1.select_slider("Período", options=anos, value=(anos[0], anos[-1]))
 mun_sel = c2.multiselect("Municípios (vazio = todos)", municipios)
 so_fem = c3.toggle("Só feminicídios", value=False)
 
-where = ["ano BETWEEN %s AND %s"]
-params = [faixa_anos[0], faixa_anos[1]]
+filtro = base["ano"].between(faixa_anos[0], faixa_anos[1])
 if mun_sel:
-    where.append("municipio = ANY(%s)")
-    params.append(mun_sel)
+    filtro &= base["municipio"].isin(mun_sel)
 if so_fem:
-    where.append("feminicidio")
-W = " AND ".join(where)
-P = tuple(params)
+    filtro &= base["feminicidio"].eq(True)
+dados = base[filtro]
 
 # ------------------------------------------------------------------ KPIs
-k = consulta(f"""SELECT COUNT(*) AS total,
-                        COUNT(*) FILTER (WHERE feminicidio) AS fem,
-                        COUNT(*) FILTER (WHERE raca_negra) AS negras,
-                        COUNT(*) FILTER (WHERE raca_negra IS NOT NULL) AS com_raca
-                 FROM ocorrencias WHERE {W}""", P).iloc[0]
-total = int(k.total)
+k = pd.Series({"fem": int(dados["feminicidio"].eq(True).sum()),
+               "negras": int(dados["raca_negra"].eq(True).sum()),
+               "com_raca": int(dados["raca_negra"].notna().sum())})
+total = len(dados)
 m1, m2, m3 = st.columns(3)
 m1.metric("Vítimas no período", f"{total}")
 m2.metric("Feminicídios", f"{int(k.fem)}", f"{100 * k.fem / total:.1f}% do total" if total else None,
@@ -86,10 +97,7 @@ if total == 0:
     st.stop()
 
 # ------------------------------------------------------------------ série temporal
-serie = consulta(f"""SELECT ano,
-                            COUNT(*) FILTER (WHERE feminicidio) AS "Feminicídio",
-                            COUNT(*) FILTER (WHERE NOT feminicidio) AS "Homicídio doloso"
-                     FROM ocorrencias WHERE {W} GROUP BY ano ORDER BY ano""", P)
+serie = contar(dados, "ano")
 serie_long = serie.melt(id_vars="ano", var_name="Classificação", value_name="Vítimas")
 fig = px.line(serie_long, x="ano", y="Vítimas", color="Classificação", markers=True,
               color_discrete_map={"Feminicídio": COR_FEM, "Homicídio doloso": COR_HOM},
@@ -100,12 +108,9 @@ st.plotly_chart(layout(fig), use_container_width=True)
 
 # ------------------------------------------------------------------ perfis
 def barras_por(coluna: str, titulo: str, ordem=None):
-    df = consulta(f"""SELECT {coluna} AS categoria,
-                             COUNT(*) FILTER (WHERE feminicidio) AS "Feminicídio",
-                             COUNT(*) FILTER (WHERE NOT feminicidio) AS "Homicídio doloso"
-                      FROM ocorrencias WHERE {W} GROUP BY 1""", P)
+    df = contar(dados, coluna).rename(columns={coluna: "categoria"})
     df["total"] = df["Feminicídio"] + df["Homicídio doloso"]
-    df = df.sort_values("total", ascending=True)
+    df = df.sort_values("total", ascending=True, kind="stable")
     longo = df.melt(id_vars=["categoria", "total"], var_name="Classificação", value_name="Vítimas")
     series = ["Feminicídio"] if so_fem else ["Feminicídio", "Homicídio doloso"]
     longo = longo[longo["Classificação"].isin(series)]
@@ -127,8 +132,7 @@ b.plotly_chart(barras_por("meio_empregado", "Meio empregado"), use_container_wid
 
 # ------------------------------------------------------------------ interseccional
 st.subheader("Cruzamento interseccional: faixa etária × raça/cor")
-cruz = consulta(f"""SELECT faixa_etaria, raca_cor, COUNT(*) AS vitimas
-                    FROM ocorrencias WHERE {W} GROUP BY 1, 2""", P)
+cruz = dados.groupby(["faixa_etaria", "raca_cor"]).size().reset_index(name="vitimas")
 matriz = cruz.pivot(index="faixa_etaria", columns="raca_cor", values="vitimas").fillna(0).astype(int)
 matriz = matriz.reindex([f for f in ORDEM_FAIXA if f in matriz.index])
 hm = px.imshow(matriz, text_auto=True, aspect="auto", color_continuous_scale=ESCALA_SEQ,
@@ -137,16 +141,16 @@ st.plotly_chart(layout(hm, 380), use_container_width=True)
 
 # ------------------------------------------------------------------ relação e município
 a, b = st.columns(2)
-rel = consulta(f"""SELECT grupo_relacao AS "Vínculo", COUNT(*) AS "Vítimas"
-                   FROM ocorrencias WHERE {W} AND feminicidio GROUP BY 1 ORDER BY 2""", P)
+rel = (dados[dados["feminicidio"].eq(True)].groupby("grupo_relacao").size()
+       .sort_values(kind="stable").rename_axis("Vínculo").reset_index(name="Vítimas"))
 fr = px.bar(rel, y="Vínculo", x="Vítimas", orientation="h",
             title="Vínculo com o autor (somente feminicídios)", color_discrete_sequence=[COR_FEM])
 a.plotly_chart(layout(fr, 340), use_container_width=True)
 a.caption("A relação vítima-autor está registrada quase exclusivamente nos casos de feminicídio; "
           "nos homicídios dolosos o campo aparece como NÃO INFORMADO.")
 
-mun = consulta(f"""SELECT municipio AS "Município", COUNT(*) AS "Vítimas"
-                   FROM ocorrencias WHERE {W} GROUP BY 1 ORDER BY 2 DESC LIMIT 15""", P)
+mun = (dados.groupby("municipio").size().sort_values(ascending=False, kind="stable").head(15)
+       .rename_axis("Município").reset_index(name="Vítimas"))
 fm = px.bar(mun.iloc[::-1], y="Município", x="Vítimas", orientation="h",
             title="15 municípios com mais vítimas", color_discrete_sequence=[COR_FEM])
 b.plotly_chart(layout(fm, 340), use_container_width=True)
