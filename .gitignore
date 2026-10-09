@@ -3,7 +3,6 @@
 venv/
 __pycache__/
 *.pyc
-data/processed/
 logs/*.csv
 .ipynb_checkpoints/
 .streamlit/secrets.toml

@@ -1,0 +1,418 @@
+cod_ibge,nome_municipio,id_territorio
+290010,Abaíra,3
+290020,Abaré,24
+290030,Acajutiba,18
+290035,Adustina,17
+290040,Água Fria,19
+290050,Érico Cardoso,12
+290060,Aiquara,22
+290070,Alagoinhas,18
+290080,Alcobaça,7
+290090,Almadina,5
+290100,Amargosa,9
+290110,Amélia Rodrigues,19
+290115,América Dourada,1
+290120,Anagé,20
+290130,Andaraí,3
+290135,Andorinha,25
+290140,Angical,11
+290150,Anguera,19
+290160,Antas,17
+290170,Antônio Cardoso,19
+290180,Antônio Gonçalves,25
+290190,Aporá,18
+290195,Apuarema,22
+290200,Aracatu,20
+290205,Araçás,18
+290210,Araci,4
+290220,Aramari,18
+290225,Arataca,5
+290230,Aratuípe,6
+290240,Aurelino Leal,5
+290250,Baianópolis,11
+290260,Baixa Grande,15
+290265,Banzaê,17
+290270,Barra,2
+290280,Barra Da Estiva,3
+290290,Barra Do Choça,20
+290300,Barra Do Mendes,1
+290310,Barra Do Rocha,22
+290320,Barreiras,11
+290323,Barro Alto,1
+290327,Barrocas,4
+290330,Barro Preto,5
+290340,Belmonte,7
+290350,Belo Campo,20
+290360,Biritinga,4
+290370,Boa Nova,22
+290380,Boa Vista Do Tupim,14
+290390,Bom Jesus Da Lapa,2
+290395,Bom Jesus Da Serra,20
+290400,Boninal,3
+290405,Bonito,3
+290410,Boquira,12
+290420,Botuporã,12
+290430,Brejões,9
+290440,Brejolândia,23
+290450,Brotas De Macaúbas,2
+290460,Brumado,13
+290470,Buerarema,5
+290475,Buritirama,11
+290480,Caatiba,8
+290485,Cabaceiras Do Paraguaçu,21
+290490,Cachoeira,21
+290500,Caculé,13
+290510,Caém,16
+290515,Caetanos,20
+290520,Caetité,13
+290530,Cafarnaum,1
+290540,Cairu,6
+290550,Caldeirão Grande,25
+290560,Camacan,5
+290570,Camaçari,26
+290580,Camamu,6
+290590,Campo Alegre De Lourdes,10
+290600,Campo Formoso,25
+290610,Canápolis,23
+290620,Canarana,1
+290630,Canavieiras,5
+290640,Candeal,4
+290650,Candeias,26
+290660,Candiba,13
+290670,Cândido Sales,20
+290680,Cansanção,4
+290682,Canudos,10
+290685,Capela Do Alto Alegre,15
+290687,Capim Grosso,16
+290689,Caraíbas,20
+290690,Caravelas,7
+290700,Cardeal Da Silva,18
+290710,Carinhanha,2
+290720,Casa Nova,10
+290730,Castro Alves,21
+290740,Catolândia,11
+290750,Catu,18
+290755,Caturama,12
+290760,Central,1
+290770,Chorrochó,24
+290780,Cícero Dantas,17
+290790,Cipó,17
+290800,Coaraci,5
+290810,Cocos,23
+290820,Conceição Da Feira,19
+290830,Conceição Do Almeida,21
+290840,Conceição Do Coité,4
+290850,Conceição Do Jacuípe,19
+290860,Conde,18
+290870,Condeúba,20
+290880,Contendas Do Sincorá,13
+290890,Coração De Maria,19
+290900,Cordeiros,20
+290910,Coribe,23
+290920,Coronel João Sá,17
+290930,Correntina,23
+290940,Cotegipe,11
+290950,Cravolândia,9
+290960,Crisópolis,18
+290970,Cristópolis,11
+290980,Cruz Das Almas,21
+290990,Curaçá,10
+291000,Dário Meira,22
+291005,Dias D'Ávila,26
+291010,Dom Basílio,13
+291020,Dom Macêdo Costa,21
+291030,Elísio Medrado,9
+291040,Encruzilhada,20
+291050,Entre Rios,18
+291060,Esplanada,18
+291070,Euclides Da Cunha,17
+291072,Eunápolis,7
+291075,Fátima,17
+291077,Feira Da Mata,2
+291080,Feira De Santana,19
+291085,Filadélfia,25
+291090,Firmino Alves,8
+291100,Floresta Azul,5
+291110,Formosa Do Rio Preto,11
+291120,Gandú,6
+291125,Gavião,15
+291130,Gentio Do Ouro,1
+291140,Glória,24
+291150,Gongogi,22
+291160,Governador Mangabeira,21
+291165,Guajeru,20
+291170,Guanambi,13
+291180,Guaratinga,7
+291185,Heliópolis,17
+291190,Iaçu,14
+291200,Ibiassucê,13
+291210,Ibicaraí,5
+291220,Ibicoara,3
+291230,Ibicuí,8
+291240,Ibipeba,1
+291250,Ibipitanga,12
+291260,Ibiquera,14
+291270,Ibirapitanga,5
+291280,Ibirapuã,7
+291290,Ibirataia,22
+291300,Ibitiara,3
+291310,Ibititá,1
+291320,Ibotirama,2
+291330,Ichu,4
+291340,Igaporã,2
+291345,Igrapiúna,6
+291350,Iguaí,8
+291360,Ilhéus,5
+291370,Inhambupe,18
+291380,Ipecaetá,19
+291390,Ipiaú,22
+291400,Ipirá,15
+291410,Ipupiara,1
+291420,Irajuba,9
+291430,Iramaia,9
+291440,Iraquara,3
+291450,Irará,19
+291460,Irecê,1
+291465,Itabela,7
+291470,Itaberaba,14
+291480,Itabuna,5
+291490,Itacaré,5
+291500,Itaeté,3
+291510,Itagi,22
+291520,Itagibá,22
+291530,Itagimirim,7
+291535,Itaguaçu Da Bahia,1
+291540,Itaju Do Colônia,5
+291550,Itajuípe,5
+291560,Itamaraju,7
+291570,Itamari,22
+291580,Itambé,8
+291590,Itanagra,18
+291600,Itanhém,7
+291610,Itaparica,26
+291620,Itapé,5
+291630,Itapebi,7
+291640,Itapetinga,8
+291650,Itapicuru,18
+291660,Itapitanga,5
+291670,Itaquara,9
+291680,Itarantim,8
+291685,Itatim,14
+291690,Itiruçu,9
+291700,Itiúba,4
+291710,Itororó,8
+291720,Ituaçu,13
+291730,Ituberá,6
+291733,Iuiú,13
+291735,Jaborandi,23
+291740,Jacaraci,20
+291750,Jacobina,16
+291760,Jaguaquara,9
+291770,Jaguarari,25
+291780,Jaguaripe,6
+291790,Jandaíra,18
+291800,Jequié,22
+291810,Jeremoabo,17
+291820,Jiquiriçá,9
+291830,Jitaúna,22
+291835,João Dourado,1
+291840,Juazeiro,10
+291845,Jucuruçu,7
+291850,Jussara,1
+291855,Jussari,5
+291860,Jussiape,3
+291870,Lafaiete Coutinho,9
+291875,Lagoa Real,13
+291880,Laje,9
+291890,Lajedão,7
+291900,Lajedinho,14
+291905,Lajedo Do Tabocal,9
+291910,Lamarão,4
+291915,Lapão,1
+291920,Lauro De Freitas,26
+291930,Lençóis,3
+291940,Licínio De Almeida,20
+291950,Livramento De Nossa Senhora,13
+291955,Luís Eduardo Magalhães,11
+291960,Macajuba,14
+291970,Macarani,8
+291980,Macaúbas,12
+291990,Macururé,24
+291992,Madre De Deus,26
+291995,Maetinga,20
+292000,Maiquinique,8
+292010,Mairi,15
+292020,Malhada,2
+292030,Malhada De Pedras,13
+292040,Manoel Vitorino,22
+292045,Mansidão,11
+292050,Maracás,9
+292060,Maragogipe,21
+292070,Maraú,5
+292080,Marcionílio Souza,3
+292090,Mascote,5
+292100,Mata De São João,18
+292105,Matina,2
+292110,Medeiros Neto,7
+292120,Miguel Calmon,14
+292130,Milagres,9
+292140,Mirangaba,16
+292145,Mirante,20
+292150,Monte Santo,4
+292160,Morpará,2
+292170,Morro Do Chapéu,3
+292180,Mortugaba,20
+292190,Mucugê,3
+292200,Mucuri,7
+292205,Mulungu Do Morro,1
+292210,Mundo Novo,14
+292220,Muniz Ferreira,21
+292225,Muquém Do São Francisco,2
+292230,Muritiba,21
+292240,Mutuípe,9
+292250,Nazaré,21
+292260,Nilo Peçanha,6
+292265,Nordestina,4
+292270,Nova Canaã,8
+292273,Nova Fátima,15
+292275,Nova Ibiá,22
+292280,Nova Itarana,9
+292285,Nova Redenção,3
+292290,Nova Soure,17
+292300,Nova Viçosa,7
+292303,Novo Horizonte,3
+292305,Novo Triunfo,17
+292310,Olindina,18
+292320,Oliveira Dos Brejinhos,2
+292330,Ouriçangas,18
+292335,Ourolândia,16
+292340,Palmas De Monte Alto,13
+292350,Palmeiras,3
+292360,Paramirim,12
+292370,Paratinga,2
+292380,Paripiranga,17
+292390,Pau Brasil,5
+292400,Paulo Afonso,24
+292405,Pé De Serra,15
+292410,Pedrão,18
+292420,Pedro Alexandre,17
+292430,Piatã,3
+292440,Pilão Arcado,10
+292450,Pindaí,13
+292460,Pindobaçu,25
+292465,Pintadas,15
+292467,Piraí Do Norte,6
+292470,Piripá,20
+292480,Piritiba,14
+292490,Planaltino,9
+292500,Planalto,20
+292510,Poções,20
+292520,Pojuca,18
+292525,Ponto Novo,25
+292530,Porto Seguro,7
+292540,Potiraguá,8
+292550,Prado,7
+292560,Presidente Dutra,1
+292570,Presidente Jânio Quadros,20
+292575,Presidente Tancredo Neves,6
+292580,Queimadas,4
+292590,Quijingue,4
+292593,Quixabeira,15
+292595,Rafael Jambeiro,14
+292600,Remanso,10
+292610,Retirolândia,4
+292620,Riachão Das Neves,11
+292630,Riachão Do Jacuípe,15
+292640,Riacho De Santana,2
+292650,Ribeira Do Amparo,17
+292660,Ribeira Do Pombal,17
+292665,Ribeirão Do Largo,20
+292670,Rio De Contas,3
+292680,Rio Do Antônio,13
+292690,Rio Do Pires,12
+292700,Rio Real,18
+292710,Rodelas,24
+292720,Ruy Barbosa,14
+292730,Salinas Da Margarida,26
+292740,Salvador,26
+292750,Santa Bárbara,19
+292760,Santa Brígida,17
+292770,Santa Cruz Cabrália,7
+292780,Santa Cruz Da Vitória,8
+292790,Santa Inês,9
+292800,Santaluz,4
+292805,Santa Luzia,5
+292810,Santa Maria Da Vitória,23
+292820,Santana,23
+292830,Santanópolis,19
+292840,Santa Rita De Cássia,11
+292850,Santa Teresinha,14
+292860,Santo Amaro,21
+292870,Santo Antônio De Jesus,21
+292880,Santo Estêvão,19
+292890,São Desidério,11
+292895,São Domingos,4
+292900,São Félix,21
+292905,São Félix Do Coribe,23
+292910,São Felipe,21
+292920,São Francisco Do Conde,21
+292925,São Gabriel,1
+292930,São Gonçalo Dos Campos,19
+292935,São José Da Vitória,5
+292937,São José Do Jacuípe,15
+292940,São Miguel Das Matas,9
+292950,São Sebastião do Passé,21
+292960,Sapeaçu,21
+292970,Sátiro Dias,18
+292975,Saubara,21
+292980,Saúde,16
+292990,Seabra,3
+293000,Sebastião Laranjeiras,13
+293010,Senhor Do Bonfim,25
+293015,Serra Do Ramalho,2
+293020,Sento Sé,10
+293030,Serra Dourada,23
+293040,Serra Preta,15
+293050,Serrinha,4
+293060,Serrolândia,16
+293070,Simões Filho,26
+293075,Sítio Do Mato,2
+293076,Sítio Do Quinto,17
+293077,Sobradinho,10
+293080,Souto Soares,3
+293090,Tabocas Do Brejo Velho,23
+293100,Tanhaçu,13
+293105,Tanque Novo,12
+293110,Tanquinho,19
+293120,Taperoá,6
+293130,Tapiramutá,14
+293135,Teixeira De Freitas,7
+293140,Teodoro Sampaio,19
+293150,Teofilândia,4
+293160,Teolândia,6
+293170,Terra Nova,19
+293180,Tremedal,20
+293190,Tucano,4
+293200,Uauá,10
+293210,Ubaíra,9
+293220,Ubaitaba,5
+293230,Ubatã,22
+293240,Uibaí,1
+293245,Umburanas,16
+293250,Una,5
+293260,Urandi,13
+293270,Uruçuca,5
+293280,Utinga,3
+293290,Valença,6
+293300,Valente,4
+293305,Várzea Da Roça,15
+293310,Várzea Do Poço,15
+293315,Várzea Nova,16
+293317,Varzedo,21
+293320,Vera Cruz,26
+293325,Vereda,7
+293330,Vitória Da Conquista,20
+293340,Wagner,3
+293345,Wanderley,11
+293350,Wenceslau Guimarães,6
+293360,Xique-Xique,1

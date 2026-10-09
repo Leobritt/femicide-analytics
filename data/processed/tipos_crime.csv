@@ -1,0 +1,12 @@
+id_tipo_crime,codigo,nome_tipo_crime,letal
+1,ameaca,AMEAÇA,False
+2,difamacao,DIFAMAÇÃO,False
+3,importunacao_sexual,IMPORTUNAÇÃO SEXUAL,False
+4,injuria,INJÚRIA,False
+5,lesao_corporal_dolosa,LESÃO CORPORAL DOLOSA,False
+6,tentativa_de_feminicidio,TENTATIVA DE FEMINICÍDIO,False
+7,tentativa_de_homicidio,TENTATIVA DE HOMICIDIO,False
+8,estupro,ESTUPRO,False
+9,homicidio_doloso,HOMICÍDIO DOLOSO,True
+10,feminicidio,FEMINICÍDIO,True
+11,lesao_corporal_seguida_de_morte,LESÃO CORPORAL SEGUIDA DE MORTE,True
