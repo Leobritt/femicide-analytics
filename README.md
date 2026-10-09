@@ -141,45 +141,141 @@ Medição no banco da Aiven em 09/10/2026 (`logs/validacao_aiven.txt`): a tabela
 o banco inteiro, com os catálogos do próprio PostgreSQL, cerca de 9 MB: menos de 1% do
 limite de 1 GB do plano gratuito.
 
-## 5. Como executar
+## 5. Passo a passo para rodar tudo
 
-1. Instalar **Python 3.10+**, clonar o repositório e instalar as dependências:
-   ```bash
-   python -m venv .venv
-   # Windows: .venv\Scripts\activate      Linux/Mac: source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
-2. Testar o ETL sem banco:
-   ```bash
-   python -m etl.run_etl --dry-run
-   ```
-   Esperado: `26 territórios | 417 municípios | 11 tipos de crime | 4587 linhas no fato | 118380 vítimas | 10 correções no anexo`.
-3. Configurar a conexão: copiar `.env.example` para `.env` e colar a **Service URI** do
-   PostgreSQL da Aiven em `DATABASE_URL`. **Nunca** fazer commit do `.env`.
-4. Rodar o pipeline completo:
-   ```bash
-   python -m etl.run_etl
-   ```
-   Cria as tabelas, carrega os dados e recria as visões. Pode ser repetido: a carga
-   esvazia e recarrega tudo numa única transação.
-5. Validar:
-   ```bash
-   psql "$DATABASE_URL" -f sql/03_validacao.sql
-   ```
-6. Abrir o dashboard:
-   ```bash
-   streamlit run dashboard/app.py
-   ```
-   Mostra indicadores, vítimas por território, por tipo de crime e por município, e o
-   cruzamento território × tipo de crime. Os filtros são por Território de Identidade,
-   tipo de crime e crimes letais.
-7. (Opcional, uma vez) Remover as tabelas da base anterior:
-   ```bash
-   psql "$DATABASE_URL" -f sql/00_limpeza_base_antiga.sql
-   ```
+Do zero até o dashboard aberto. Os comandos são para Linux/Mac; onde o Windows difere,
+a alternativa está indicada.
 
-> O serviço gratuito da Aiven é desligado após um período sem uso (há aviso por e-mail).
-> Se isso acontecer, basta religar pelo console antes de usar ou apresentar.
+### 5.1 Pré-requisitos
+
+- **Python 3.10 ou superior** e **Git**.
+- Uma conta gratuita na **Aiven** (https://console.aiven.io), sem cartão de crédito.
+- Opcional: o cliente **psql**, usado só no passo de validação.
+  No Ubuntu/Debian: `sudo apt install postgresql-client`.
+
+### 5.2 Baixar o projeto e instalar as dependências
+
+```bash
+git clone https://github.com/Leobritt/femicide-analytics-es.git
+cd femicide-analytics-es
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+O ambiente virtual precisa estar ativo (`(.venv)` no início da linha do terminal) em
+todos os passos seguintes.
+
+### 5.3 Testar o tratamento sem banco
+
+```bash
+python -m etl.run_etl --dry-run
+```
+
+Saída esperada:
+
+```
+[extract] 06_VIOLENCIA_CONTRA_MULHER_2025.xlsx: 417 municípios x 11 tipos de crime | ano 2025
+[extract] Anexo_II_-_Relacao_Territorios_de_Identidade.pdf: 26 territórios
+[transform] 26 territórios | 417 municípios | 11 tipos de crime | 4587 linhas no fato | 118380 vítimas | 10 correções no anexo
+```
+
+Esse passo lê os originais em `data/raw/`, grava os CSVs tratados em `data/processed/`
+e o registro de correções em `logs/correcoes_territorios.csv`. O aviso
+`UserWarning: Workbook contains no default style` pode ser ignorado.
+
+### 5.4 Preparar o banco na Aiven
+
+1. No console da Aiven: **Create service → PostgreSQL → plano Free**, escolher uma região
+   e criar. Se o serviço já existe e está **Powered off**, clicar em **Power on**.
+2. Esperar o status ficar **Running**. Ao religar, ele passa alguns minutos em
+   **Rebuilding**.
+3. Na aba **Overview**, copiar a **Service URI**.
+
+### 5.5 Configurar a conexão
+
+```bash
+cp .env.example .env               # Windows: copy .env.example .env
+```
+
+Abrir o `.env` e colar a Service URI em `DATABASE_URL`:
+
+```
+DATABASE_URL=postgres://avnadmin:SENHA@HOST.aivencloud.com:PORTA/defaultdb?sslmode=require
+```
+
+O `.env` está no `.gitignore`. **Nunca** fazer commit desse arquivo nem compartilhar a
+URI em canal público.
+
+### 5.6 Carregar os dados no banco
+
+```bash
+python -m etl.run_etl
+```
+
+Saída esperada, além das linhas do passo 5.3:
+
+```
+[load] dim_territorio: 26 linhas
+[load] dim_municipio: 417 linhas
+[load] dim_tipo_crime: 11 linhas
+[load] fato_vitimas: 4587 linhas
+[load] tamanho do banco: ...
+[run] Pipeline concluído.
+```
+
+O comando cria as tabelas, carrega os dados e recria as visões. Pode ser repetido à
+vontade: a carga esvazia e recarrega tudo numa única transação, sem duplicar.
+
+### 5.7 Validar a carga
+
+```bash
+URL="$(grep ^DATABASE_URL .env | cut -d= -f2-)"
+psql "$URL" -f sql/03_validacao.sql
+```
+
+Confere a quantidade de linhas por tabela, os totais por tipo de crime (que precisam
+ser iguais aos da linha `Total` da planilha), a estrutura das tabelas e o espaço
+ocupado. Para guardar a saída como evidência:
+
+```bash
+psql "$URL" -f sql/03_validacao.sql > logs/validacao_aiven.txt
+```
+
+Sem o `psql`, o mesmo arquivo pode ser executado em um cliente gráfico como DBeaver ou
+pgAdmin, conectado com a mesma Service URI.
+
+### 5.8 Abrir o dashboard
+
+```bash
+streamlit run dashboard/app.py
+```
+
+O navegador abre em http://localhost:8501. O dashboard mostra indicadores, vítimas por
+território, por tipo de crime e por município, e o cruzamento território × tipo de
+crime, com filtros por Território de Identidade, tipo de crime e crimes letais. Para
+encerrar, `Ctrl+C` no terminal. Depois de rodar o ETL de novo, usar o botão
+**Recarregar dados** na barra lateral.
+
+### 5.9 Problemas comuns
+
+| Sintoma | Causa provável | Solução |
+|---|---|---|
+| `could not translate host name ... to address` | Serviço da Aiven desligado por inatividade | Religar no console (passo 5.4) e esperar ficar **Running** |
+| `DATABASE_URL não definida` | Arquivo `.env` ausente ou vazio | Refazer o passo 5.5 |
+| `ModuleNotFoundError` | Ambiente virtual inativo ou dependências não instaladas | `source .venv/bin/activate` e `pip install -r requirements.txt` |
+| `[transform] validação falhou: ...` | Arquivo original alterado ou versão diferente da planilha | Restaurar os arquivos de `data/raw/` com `git checkout -- data/raw` |
+| `relation "fato_vitimas" does not exist` no dashboard | Carga ainda não executada neste banco | Rodar o passo 5.6 |
+| `psql: command not found` | Cliente PostgreSQL não instalado | Instalar (passo 5.1) ou usar um cliente gráfico |
+
+### 5.10 Limpeza da base anterior (opcional, uma vez)
+
+Só é necessário em bancos que receberam a primeira versão do projeto (base do Espírito
+Santo). Remove a tabela `ocorrencias` e as visões antigas:
+
+```bash
+psql "$URL" -f sql/00_limpeza_base_antiga.sql
+```
 
 ## 6. Limitações conhecidas
 
