@@ -8,7 +8,7 @@ Equipe: Leonardo Britto, Gustavo Castelluccio, Filipe Miranda e Henrique Viana.
 
 ```
 SSP-BA (XLSX) + Anexo II (PDF) → ETL em Python (extract → transform → load)
-   → PostgreSQL Aiven (3 dimensões + 1 fato + visões) → Dashboard (próxima etapa)
+   → PostgreSQL Aiven (3 dimensões + 1 fato + visões) → Dashboard Streamlit
 ```
 
 ## 1. Origem dos dados
@@ -40,7 +40,7 @@ sql/03_validacao.sql   contagens, totais de controle, estrutura e tamanho do ban
 sql/00_limpeza_base_antiga.sql  opcional: remove as tabelas da base anterior
 logs/validacao_aiven.txt        saída de sql/03_validacao.sql executado no banco da Aiven
 logs/correcoes_territorios.csv  correções aplicadas aos nomes do anexo (gerado pelo ETL; fora do git)
-dashboard/app.py       dashboard Streamlit (ainda na versão da base anterior; será refeito na próxima etapa)
+dashboard/app.py       dashboard Streamlit (filtros por território e tipo de crime)
 ```
 
 ## 3. Processo de tratamento
@@ -166,7 +166,14 @@ limite de 1 GB do plano gratuito.
    ```bash
    psql "$DATABASE_URL" -f sql/03_validacao.sql
    ```
-6. (Opcional, uma vez) Remover as tabelas da base anterior:
+6. Abrir o dashboard:
+   ```bash
+   streamlit run dashboard/app.py
+   ```
+   Mostra indicadores, vítimas por território, por tipo de crime e por município, e o
+   cruzamento território × tipo de crime. Os filtros são por Território de Identidade,
+   tipo de crime e crimes letais.
+7. (Opcional, uma vez) Remover as tabelas da base anterior:
    ```bash
    psql "$DATABASE_URL" -f sql/00_limpeza_base_antiga.sql
    ```
