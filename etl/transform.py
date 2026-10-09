@@ -1,159 +1,157 @@
-"""Transformação: limpeza, tipagem, normalização de categorias e atributos derivados.
+"""Transformação: tipagem, formato longo e vínculo município -> Território de Identidade.
 
-Regras documentadas na Seção 2 da entrega 1. Registros que não passam na validação
-vão para logs/rejeitados.csv com o motivo.
+Saída (modelo estrela):
+    territorios   id_territorio, nome_territorio
+    municipios    cod_ibge, nome_municipio, id_territorio
+    tipos_crime   id_tipo_crime, codigo, nome_tipo_crime, letal
+    vitimas       ano, cod_ibge, id_tipo_crime, qtd_vitimas
+
+Qualquer inconsistência interrompe o pipeline com erro: a base é pequena e fechada
+(417 municípios), então não há registro "rejeitável" sem comprometer os totais.
 """
 import re
 import unicodedata
 
 import pandas as pd
 
-NI = "NÃO INFORMADO"
-DATA_MIN, DATA_MAX = pd.Timestamp("2017-01-01"), pd.Timestamp("2024-12-31")
+# Crimes com resultado morte. Usado para separar violência letal e não letal no dashboard.
+CRIMES_LETAIS = {"HOMICÍDIO DOLOSO", "FEMINICÍDIO", "LESÃO CORPORAL SEGUIDA DE MORTE"}
 
-# ---------------------------------------------------------------- dicionários
-# COD_CIOD traz o MEIO EMPREGADO (ex.: "A01A - ARMA DE FOGO"), não um código de ocorrência.
-MEIO_POR_CODIGO = {"A01A": "ARMA DE FOGO", "A01B": "ARMA BRANCA", "A01C": "OUTROS MEIOS"}
-
-# CUTIS mistura siglas (P, B, N) e nomes por extenso (Parda, Branca, Negra).
-# Premissa: "N"/"Negra" corresponde à categoria PRETA do IBGE, pois a base registra
-# "Parda" separadamente. Confirmar com a documentação da SESP-ES.
-RACA_COR = {
-    "P": "PARDA", "PARDA": "PARDA",
-    "B": "BRANCA", "BRANCA": "BRANCA",
-    "N": "PRETA", "NEGRA": "PRETA", "PRETA": "PRETA",
-    "A": "AMARELA", "AMARELA": "AMARELA",
-    "I": "INDÍGENA", "INDIGENA": "INDÍGENA",
-    "INDETERMINADA": NI, "IGNORADA": NI, "": NI,
+# O Anexo II (2011) diverge da planilha da SSP-BA em 10 pontos. A grafia adotada é a da
+# planilha, que segue o IBGE. Chave: texto como está no PDF -> município(s) corretos.
+CORRECOES_ANEXO = {
+    # grafia diferente
+    "Barra Choça": ["Barra do Choça"],
+    "D. Macedo Costa": ["Dom Macêdo Costa"],
+    "Lagedo do Tabocal": ["Lajedo do Tabocal"],
+    "Rui Barbosa": ["Ruy Barbosa"],
+    "Salinas das Margaridas": ["Salinas da Margarida"],
+    "Santa Terezinha": ["Santa Teresinha"],
+    "Tabocas d Brejo Velho": ["Tabocas do Brejo Velho"],
+    # dois municípios sem vírgula entre eles no PDF
+    "Barro Alto Cafarnaum": ["Barro Alto", "Cafarnaum"],
+    "Bonito Ibicoara": ["Bonito", "Ibicoara"],
+    "Lençóis Marcionílio Souza": ["Lençóis", "Marcionílio Souza"],
 }
-
-FEMINICIDIO = {"FEMINICIDIO": True, "HOMICIDIO DOLOSO": False}
-
-TIPO_LOCAL = {
-    "VIA PUBLICA": "VIA PÚBLICA",
-    "RESIDENCIA": "RESIDÊNCIA",
-    "DOMICILIO": "RESIDÊNCIA",
-    "ESTABELECIMENTO COMERCIAL": "ESTABELECIMENTO COMERCIAL",
-    "TERRENO BALDIO": "TERRENO BALDIO / MATA",
-    "TERRENO BALDIO / CONSTRUCAO / MATA": "TERRENO BALDIO / MATA",
-    "FLORESTA": "TERRENO BALDIO / MATA",
-    "ZONA RURAL": "ZONA RURAL",
-    "RIO/LAGO/LAGOA/REPRESSA": "CURSO D'ÁGUA / REPRESA",
-    "LAGO / LAGOA / REPRESA": "CURSO D'ÁGUA / REPRESA",
-    "CURSO D'AGUA": "CURSO D'ÁGUA / REPRESA",
-    "ESCOLA": "OUTROS", "PRACA": "OUTROS", "VEICULO": "OUTROS",
-    "TEMPLOS RELIGIOSOS": "OUTROS", "OUTROS LOCAIS": "OUTROS",
-    "NAO INFORMADO": NI, "": NI,
-}
-
-GRUPO_RELACAO = {
-    "MARIDO": "PARCEIRO ÍNTIMO", "COMPANHEIRO": "PARCEIRO ÍNTIMO", "NAMORADO": "PARCEIRO ÍNTIMO",
-    "EX-MARIDO": "EX-PARCEIRO", "EX-COMPANHEIRO": "EX-PARCEIRO", "EX-NAMORADO": "EX-PARCEIRO",
-    "PAI": "FAMILIAR", "PADRASTO": "FAMILIAR", "FILHO": "FAMILIAR", "FILHA": "FAMILIAR",
-    "CUNHADO": "FAMILIAR", "PARENTE": "FAMILIAR",
-    "CONHECIDO": "CONHECIDO",
-    "NAO INFORMADO": NI, "": NI,
-}
-
-COLUNAS_SAIDA = [
-    "id_origem", "data_obito", "hora_fato", "idade_vitima", "municipio", "bairro",
-    "meio_empregado", "raca_cor", "relacao_vitima_autor", "feminicidio", "tipo_local",
-    "ano", "mes", "dia_semana", "periodo_dia", "faixa_etaria", "raca_negra", "grupo_relacao",
-]
 
 
 # ---------------------------------------------------------------- utilitários
-def _limpar(txt: str) -> str:
-    """Remove espaços extras e coloca em maiúsculas (mantém acentos)."""
-    return re.sub(r"\s+", " ", str(txt)).strip().upper()
+def _limpar(texto) -> str:
+    """Une quebras de linha e remove espaços extras (mantém acentos e caixa)."""
+    return re.sub(r"\s+", " ", str(texto)).strip()
 
 
-def _chave(txt: str) -> str:
-    """Versão sem acentos, usada só para procurar nos dicionários."""
-    t = unicodedata.normalize("NFKD", _limpar(txt))
+def _sem_acento(texto: str) -> str:
+    t = unicodedata.normalize("NFKD", texto)
     return "".join(c for c in t if not unicodedata.combining(c))
 
 
-def _mapear(serie: pd.Series, dicionario: dict, nome: str, padrao=None) -> pd.Series:
-    chaves = serie.map(_chave)
-    desconhecidos = sorted(set(chaves) - set(dicionario))
-    if desconhecidos:
-        print(f"[transform] AVISO {nome}: valores sem mapeamento {desconhecidos}")
-    return chaves.map(lambda k: dicionario.get(k, padrao if padrao is not None else _limpar(k)))
+def _chave(nome: str) -> str:
+    """Chave de comparação de nomes: sem acento, sem pontuação, sem espaço, maiúscula."""
+    return re.sub(r"[^A-Z]", "", _sem_acento(_limpar(nome)).upper())
 
 
-def _faixa_etaria(idade) -> str:
-    if pd.isna(idade):
-        return NI
-    if idade <= 17:
-        return "0-17"
-    if idade <= 29:
-        return "18-29"
-    if idade <= 39:
-        return "30-39"
-    if idade <= 59:
-        return "40-59"
-    return "60+"
+def _codigo(nome: str) -> str:
+    """'LESÃO CORPORAL DOLOSA' -> 'lesao_corporal_dolosa'."""
+    return re.sub(r"[^a-z]+", "_", _sem_acento(nome).lower()).strip("_")
 
 
-def _periodo_dia(hora) -> str:
-    if pd.isna(hora):
-        return NI
-    h = hora.hour
-    if h < 6:
-        return "MADRUGADA"
-    if h < 12:
-        return "MANHÃ"
-    if h < 18:
-        return "TARDE"
-    return "NOITE"
+def _exigir(condicao: bool, mensagem: str) -> None:
+    if not condicao:
+        raise ValueError(f"[transform] validação falhou: {mensagem}")
+
+
+# ---------------------------------------------------------------- dimensões
+def _territorios(bruto: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Retorna (dim território, vínculo chave_município -> território, correções aplicadas)."""
+    dim = pd.DataFrame({
+        "id_territorio": pd.to_numeric(bruto["numero"]).astype(int),
+        "nome_territorio": bruto["territorio"].map(_limpar),
+    })
+    _exigir(dim["id_territorio"].is_unique, "número de território repetido no anexo")
+
+    vinculos, correcoes = [], []
+    for id_territorio, lista in zip(dim["id_territorio"], bruto["municipios"]):
+        for nome_pdf in (n.strip() for n in _limpar(lista).split(",")):
+            if not nome_pdf:
+                continue
+            nomes = CORRECOES_ANEXO.get(nome_pdf, [nome_pdf])
+            if nome_pdf in CORRECOES_ANEXO:
+                correcoes.append({"id_territorio": id_territorio, "texto_no_anexo": nome_pdf,
+                                  "corrigido_para": " | ".join(nomes)})
+            vinculos += [{"chave": _chave(n), "nome_anexo": n, "id_territorio": id_territorio} for n in nomes]
+
+    vinculo = pd.DataFrame(vinculos)
+    repetidos = vinculo[vinculo["chave"].duplicated(keep=False)]["nome_anexo"].tolist()
+    _exigir(not repetidos, f"município em mais de um território: {repetidos}")
+    return dim, vinculo, pd.DataFrame(correcoes, columns=["id_territorio", "texto_no_anexo", "corrigido_para"])
+
+
+def _municipios(bruto: pd.DataFrame, vinculo: pd.DataFrame) -> pd.DataFrame:
+    dim = pd.DataFrame({
+        "cod_ibge": pd.to_numeric(bruto["ID"], errors="coerce").astype("Int64"),  # texto '290010' -> inteiro
+        "nome_municipio": bruto["MUNICÍPIO"].map(_limpar),
+    })
+    _exigir(dim["cod_ibge"].notna().all(), "código IBGE não numérico")
+    _exigir(dim["cod_ibge"].between(290000, 299999).all(), "código IBGE fora da faixa da Bahia (29xxxx)")
+    _exigir(dim["cod_ibge"].is_unique, "código IBGE repetido")
+
+    dim["chave"] = dim["nome_municipio"].map(_chave)
+    dim = dim.merge(vinculo[["chave", "id_territorio"]], on="chave", how="left")
+
+    sem_territorio = dim[dim["id_territorio"].isna()]["nome_municipio"].tolist()
+    _exigir(not sem_territorio, f"municípios da SSP-BA sem território no anexo: {sem_territorio}")
+    sobrando = sorted(set(vinculo["chave"]) - set(dim["chave"]))
+    _exigir(not sobrando, f"municípios do anexo que não existem na planilha: {sobrando}")
+
+    dim["cod_ibge"] = dim["cod_ibge"].astype(int)
+    dim["id_territorio"] = dim["id_territorio"].astype(int)
+    return dim[["cod_ibge", "nome_municipio", "id_territorio"]]
+
+
+def _tipos_crime(colunas: list[str]) -> pd.DataFrame:
+    return pd.DataFrame({
+        "id_tipo_crime": range(1, len(colunas) + 1),   # ordem das colunas na planilha
+        "codigo": [_codigo(c) for c in colunas],
+        "nome_tipo_crime": colunas,
+        "letal": [c in CRIMES_LETAIS for c in colunas],
+    })
+
+
+# ---------------------------------------------------------------- fato
+def _vitimas(bruto: pd.DataFrame, tipos: pd.DataFrame, totais: pd.Series, ano: int) -> pd.DataFrame:
+    colunas = tipos["nome_tipo_crime"].tolist()
+    valores = bruto[colunas].apply(pd.to_numeric, errors="coerce")
+    _exigir(valores.notna().all().all(), "contagem vazia ou não numérica")
+    _exigir((valores % 1 == 0).all().all(), "contagem não inteira")
+    _exigir((valores >= 0).all().all(), "contagem negativa")
+
+    divergentes = [c for c in colunas if int(valores[c].sum()) != int(totais[c])]
+    _exigir(not divergentes, f"soma diferente da linha Total da planilha em: {divergentes}")
+
+    # largo -> longo: uma linha por município x tipo de crime
+    largo = valores.astype(int).assign(cod_ibge=pd.to_numeric(bruto["ID"]).astype(int).values)
+    longo = largo.melt(id_vars="cod_ibge", var_name="nome_tipo_crime", value_name="qtd_vitimas")
+    longo = longo.merge(tipos[["id_tipo_crime", "nome_tipo_crime"]], on="nome_tipo_crime")
+    longo["ano"] = ano
+    return (longo[["ano", "cod_ibge", "id_tipo_crime", "qtd_vitimas"]]
+            .sort_values(["cod_ibge", "id_tipo_crime"], kind="stable").reset_index(drop=True))
 
 
 # ---------------------------------------------------------------- pipeline
-def transformar(bruto: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Retorna (dados_tratados, rejeitados)."""
-    df = pd.DataFrame(index=bruto.index)
+def transformar(vitimas_bruto: pd.DataFrame, totais: pd.Series, ano: int,
+                territorios_bruto: pd.DataFrame) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
+    """Retorna ({nome_tabela: DataFrame}, correções aplicadas ao anexo)."""
+    territorios, vinculo, correcoes = _territorios(territorios_bruto)
+    municipios = _municipios(vitimas_bruto, vinculo)
+    tipos = _tipos_crime([c for c in vitimas_bruto.columns if c not in ("ID", "MUNICÍPIO")])
+    vitimas = _vitimas(vitimas_bruto, tipos, totais, ano)
 
-    df["id_origem"] = pd.to_numeric(bruto["_id"], errors="coerce").astype("Int64")
-    df["data_obito"] = pd.to_datetime(bruto["DAT_OBT"], errors="coerce").dt.normalize()
-    df["hora_fato"] = pd.to_datetime(bruto["HOR_FAT"], format="%H:%M:%S", errors="coerce").dt.time
+    _exigir(len(vitimas) == len(municipios) * len(tipos), "fato incompleto (município x crime)")
 
-    idade = pd.to_numeric(bruto["IDD_VIT"], errors="coerce")
-    df["idade_vitima"] = idade.where(idade.between(0, 110)).astype("Int64")
-
-    df["municipio"] = bruto["MUN_OBT"].map(_limpar)
-    df["bairro"] = bruto["BAI_OBT"].map(_limpar).replace("", NI)
-
-    codigo = bruto["COD_CIOD"].str.extract(r"^\s*(A\d{2}[A-Z])", expand=False)
-    df["meio_empregado"] = codigo.map(MEIO_POR_CODIGO).fillna(NI)
-
-    df["raca_cor"] = _mapear(bruto["CUTIS"], RACA_COR, "CUTIS", padrao=NI)
-    df["relacao_vitima_autor"] = bruto["REL VIT AUT"].map(_limpar).replace("", NI)
-    df["feminicidio"] = bruto["FEMINICIDIO"].map(_chave).map(FEMINICIDIO).astype("boolean")
-    df["tipo_local"] = _mapear(bruto["TIPO LOCAL"], TIPO_LOCAL, "TIPO LOCAL")
-
-    # atributos derivados
-    df["ano"] = df["data_obito"].dt.year.astype("Int64")
-    df["mes"] = df["data_obito"].dt.month.astype("Int64")
-    df["dia_semana"] = (df["data_obito"].dt.dayofweek + 1).astype("Int64")  # 1=segunda ... 7=domingo
-    df["periodo_dia"] = df["hora_fato"].map(_periodo_dia)
-    df["faixa_etaria"] = df["idade_vitima"].map(_faixa_etaria)
-    df["raca_negra"] = df["raca_cor"].map({"PRETA": True, "PARDA": True, "BRANCA": False,
-                                           "AMARELA": False, "INDÍGENA": False}).astype("boolean")
-    df["grupo_relacao"] = _mapear(df["relacao_vitima_autor"], GRUPO_RELACAO, "REL VIT AUT", padrao="OUTRO")
-
-    # ------------------------------------------------------------ validação
-    motivos = pd.Series("", index=df.index)
-    motivos[df["data_obito"].isna()] += "data inválida; "
-    motivos[~df["data_obito"].between(DATA_MIN, DATA_MAX) & df["data_obito"].notna()] += "fora do recorte 2017-2024; "
-    motivos[bruto["SEX_VIT"].map(_limpar) != "F"] += "sexo diferente de F; "
-    motivos[df["feminicidio"].isna()] += "classificação de feminicídio desconhecida; "
-    motivos[df["id_origem"].isna()] += "_id inválido; "
-
-    rejeitar = motivos != ""
-    rejeitados = bruto[rejeitar].assign(motivo=motivos[rejeitar].str.rstrip("; "))
-    tratados = df.loc[~rejeitar, COLUNAS_SAIDA].copy()
-    tratados["data_obito"] = tratados["data_obito"].dt.date
-
-    print(f"[transform] {len(tratados)} registros válidos | {len(rejeitados)} rejeitados")
-    return tratados, rejeitados
+    print(f"[transform] {len(territorios)} territórios | {len(municipios)} municípios | "
+          f"{len(tipos)} tipos de crime | {len(vitimas)} linhas no fato | "
+          f"{int(vitimas['qtd_vitimas'].sum())} vítimas | {len(correcoes)} correções no anexo")
+    tabelas = {"territorios": territorios, "municipios": municipios,
+               "tipos_crime": tipos, "vitimas": vitimas}
+    return tabelas, correcoes

@@ -1,0 +1,89 @@
+     tabela     | linhas 
+----------------+--------
+ dim_territorio |     26
+ dim_municipio  |    417
+ dim_tipo_crime |     11
+ fato_vitimas   |   4587
+(4 rows)
+
+ ano  |         nome_tipo_crime         | qtd_vitimas 
+------+---------------------------------+-------------
+ 2025 | AMEAÇA                          |       56601
+ 2025 | DIFAMAÇÃO                       |       11569
+ 2025 | IMPORTUNAÇÃO SEXUAL             |        1936
+ 2025 | INJÚRIA                         |       18881
+ 2025 | LESÃO CORPORAL DOLOSA           |       23887
+ 2025 | TENTATIVA DE FEMINICÍDIO        |         255
+ 2025 | TENTATIVA DE HOMICIDIO          |         472
+ 2025 | ESTUPRO                         |        4422
+ 2025 | HOMICÍDIO DOLOSO                |         246
+ 2025 | FEMINICÍDIO                     |         102
+ 2025 | LESÃO CORPORAL SEGUIDA DE MORTE |           9
+(11 rows)
+
+ ano  | total_vitimas 
+------+---------------
+ 2025 |        118380
+(1 row)
+
+ cod_ibge | nome_municipio | tipos_carregados 
+----------+----------------+------------------
+(0 rows)
+
+ id_territorio |            nome_territorio            | municipios 
+---------------+---------------------------------------+------------
+             1 | IRECÊ                                 |         20
+             2 | VELHO CHICO                           |         16
+             3 | CHAPADA DIAMANTINA                    |         23
+             4 | SISAL                                 |         20
+             5 | LITORAL SUL                           |         27
+             6 | BAIXO SUL                             |         14
+             7 | EXTREMO SUL                           |         21
+             8 | ITAPETINGA                            |         13
+             9 | VALE DO JIQUIRIÇÁ                     |         21
+            10 | SERTÃO DO SÃO FRANCISCO               |         10
+            11 | BACIA DO RIO GRANDE                   |         14
+            12 | BACIA DA PARAMIRIM                    |          9
+            13 | SERTÃO PRODUTIVO                      |         19
+            14 | PIEMONTE DO PARAGUAÇU                 |         14
+            15 | BACIA DO JACUÍPE                      |         14
+            16 | PIEMONTE DA DIAMANTINA                |          9
+            17 | SEMI-ÁRIDO NORDESTE II                |         18
+            18 | AGRESTE DE ALAGOINHAS / LITORAL NORTE |         22
+            19 | PORTAL DO SERTÃO                      |         17
+            20 | VITÓRIA DA CONQUISTA                  |         24
+            21 | RECÔNCAVO                             |         20
+            22 | MÉDIO RIO DAS CONTAS                  |         16
+            23 | BACIA DO RIO CORRENTE                 |         11
+            24 | ITAPARICA                             |          6
+            25 | PIEMONTE NORTE DO ITAPICURU           |          9
+            26 | METROPOLITANA DE SALVADOR             |         10
+(26 rows)
+
+ pct_zeros 
+-----------
+      39.3
+(1 row)
+
+     tabela     |     coluna      |       tipo        | tamanho | aceita_nulo 
+----------------+-----------------+-------------------+---------+-------------
+ dim_municipio  | cod_ibge        | integer           |         | NO
+ dim_municipio  | nome_municipio  | character varying |      60 | NO
+ dim_municipio  | id_territorio   | smallint          |         | NO
+ dim_territorio | id_territorio   | smallint          |         | NO
+ dim_territorio | nome_territorio | character varying |      50 | NO
+ dim_tipo_crime | id_tipo_crime   | smallint          |         | NO
+ dim_tipo_crime | codigo          | character varying |      40 | NO
+ dim_tipo_crime | nome_tipo_crime | character varying |      40 | NO
+ dim_tipo_crime | letal           | boolean           |         | NO
+ fato_vitimas   | ano             | smallint          |         | NO
+ fato_vitimas   | cod_ibge        | integer           |         | NO
+ fato_vitimas   | id_tipo_crime   | smallint          |         | NO
+ fato_vitimas   | qtd_vitimas     | integer           |         | NO
+(13 rows)
+
+ tamanho_banco | tamanho_fato | tamanho_dim_municipio 
+---------------+--------------+-----------------------
+ 9118 kB       | 448 kB       | 72 kB
+(1 row)
+
