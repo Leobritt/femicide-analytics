@@ -8,7 +8,7 @@ Equipe: Leonardo Britto, Gustavo Castelluccio, Filipe Miranda e Henrique Viana.
 
 ```
 SSP-BA (XLSX) + Anexo II (PDF) → ETL em Python (extract → transform → load)
-   → PostgreSQL Aiven (3 dimensões + 1 fato + visões) → Dashboard
+   → PostgreSQL Aiven (3 dimensões + 1 fato + visões) → Dashboard (próxima etapa)
 ```
 
 ## 1. Origem dos dados
@@ -38,8 +38,9 @@ sql/01_schema.sql      tabelas, chaves e restrições
 sql/02_agregacoes.sql  visões de consumo (por território, município e crime)
 sql/03_validacao.sql   contagens, totais de controle, estrutura e tamanho do banco
 sql/00_limpeza_base_antiga.sql  opcional: remove as tabelas da base anterior
-logs/correcoes_territorios.csv  correções aplicadas aos nomes do anexo (gerado pelo ETL)
-dashboard/app.py       dashboard Streamlit
+logs/validacao_aiven.txt        saída de sql/03_validacao.sql executado no banco da Aiven
+logs/correcoes_territorios.csv  correções aplicadas aos nomes do anexo (gerado pelo ETL; fora do git)
+dashboard/app.py       dashboard Streamlit (ainda na versão da base anterior; será refeito na próxima etapa)
 ```
 
 ## 3. Processo de tratamento
@@ -133,9 +134,12 @@ Visões de consumo (`sql/02_agregacoes.sql`): `vw_territorio_crime`, `vw_territo
 | `fato_vitimas` | 4.587 |
 
 Total de controle: 118.380 vítimas em 2025, das quais 102 feminicídios e 255 tentativas
-de feminicídio. As tabelas do projeto ocupam menos de 1 MB (a tabela fato, com índices,
-cerca de 600 kB), frente ao limite de 1 GB do plano gratuito da Aiven. O valor medido no
-banco da equipe é exibido pelo ETL e por `sql/03_validacao.sql`.
+de feminicídio.
+
+Medição no banco da Aiven em 09/10/2026 (`logs/validacao_aiven.txt`): a tabela fato ocupa
+448 kB com índices e `dim_municipio`, 72 kB. As tabelas do projeto somam menos de 1 MB, e
+o banco inteiro, com os catálogos do próprio PostgreSQL, cerca de 9 MB: menos de 1% do
+limite de 1 GB do plano gratuito.
 
 ## 5. Como executar
 
