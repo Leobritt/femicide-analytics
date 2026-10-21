@@ -6,3 +6,4 @@ __pycache__/
 logs/*.csv
 .ipynb_checkpoints/
 .streamlit/secrets.toml
+logs/*.log

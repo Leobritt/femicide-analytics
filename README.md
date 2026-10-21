@@ -2,13 +2,14 @@
 
 Projeto da disciplina Big Data e Analytics (UCSal). Pipeline de ETL que leva a planilha
 de violência contra a mulher da SSP-BA (2025) e a relação dos Territórios de Identidade
-até um PostgreSQL na Aiven.
+até um PostgreSQL 16 hospedado na VPS da equipe (`db.filipe-oliveira.cloud`), atrás de
+um proxy Traefik.
 
 Equipe: Leonardo Britto, Gustavo Castelluccio, Filipe Miranda e Henrique Viana.
 
 ```
 SSP-BA (XLSX) + Anexo II (PDF) → ETL em Python (extract → transform → load)
-   → PostgreSQL Aiven (3 dimensões + 1 fato + visões) → Dashboard Streamlit
+   → PostgreSQL na VPS (3 dimensões + 1 fato + visões) → Dashboard Streamlit
 ```
 
 ## 1. Origem dos dados
@@ -38,7 +39,7 @@ sql/01_schema.sql      tabelas, chaves e restrições
 sql/02_agregacoes.sql  visões de consumo (por território, município e crime)
 sql/03_validacao.sql   contagens, totais de controle, estrutura e tamanho do banco
 sql/00_limpeza_base_antiga.sql  opcional: remove as tabelas da base anterior
-logs/validacao_aiven.txt        saída de sql/03_validacao.sql executado no banco da Aiven
+logs/validacao_aiven.txt        saída de sql/03_validacao.sql no banco anterior (Aiven), 09/10/2026
 logs/correcoes_territorios.csv  correções aplicadas aos nomes do anexo (gerado pelo ETL; fora do git)
 dashboard/app.py       dashboard Streamlit (filtros por território e tipo de crime)
 ```
@@ -136,10 +137,10 @@ Visões de consumo (`sql/02_agregacoes.sql`): `vw_territorio_crime`, `vw_territo
 Total de controle: 118.380 vítimas em 2025, das quais 102 feminicídios e 255 tentativas
 de feminicídio.
 
-Medição no banco da Aiven em 09/10/2026 (`logs/validacao_aiven.txt`): a tabela fato ocupa
-448 kB com índices e `dim_municipio`, 72 kB. As tabelas do projeto somam menos de 1 MB, e
-o banco inteiro, com os catálogos do próprio PostgreSQL, cerca de 9 MB: menos de 1% do
-limite de 1 GB do plano gratuito.
+Medição no banco anterior, na Aiven, em 09/10/2026 (`logs/validacao_aiven.txt`): a tabela
+fato ocupa 448 kB com índices e `dim_municipio`, 72 kB. As tabelas do projeto somam menos
+de 1 MB, e o banco inteiro, com os catálogos do próprio PostgreSQL, cerca de 9 MB. Na VPS,
+a carga de 21/10/2026 registrou 8,4 MB para o banco inteiro.
 
 ## 5. Passo a passo para rodar tudo
 
@@ -149,7 +150,9 @@ a alternativa está indicada.
 ### 5.1 Pré-requisitos
 
 - **Python 3.10 ou superior** e **Git**.
-- Uma conta gratuita na **Aiven** (https://console.aiven.io), sem cartão de crédito.
+- O pacote de ambiente virtual do Python. No Ubuntu/Debian: `sudo apt install python3-venv`
+  (sem ele, o `python -m venv` falha com `ensurepip is not available`).
+- O usuário e a senha do banco da VPS, com quem administra o servidor.
 - Opcional: o cliente **psql**, usado só no passo de validação.
   No Ubuntu/Debian: `sudo apt install postgresql-client`.
 
@@ -184,13 +187,18 @@ Esse passo lê os originais em `data/raw/`, grava os CSVs tratados em `data/proc
 e o registro de correções em `logs/correcoes_territorios.csv`. O aviso
 `UserWarning: Workbook contains no default style` pode ser ignorado.
 
-### 5.4 Preparar o banco na Aiven
+### 5.4 O banco na VPS
 
-1. No console da Aiven: **Create service → PostgreSQL → plano Free**, escolher uma região
-   e criar. Se o serviço já existe e está **Powered off**, clicar em **Power on**.
-2. Esperar o status ficar **Running**. Ao religar, ele passa alguns minutos em
-   **Rebuilding**.
-3. Na aba **Overview**, copiar a **Service URI**.
+O PostgreSQL 16 roda em um container na VPS da equipe. O acesso externo passa pelo
+Traefik, que recebe as conexões em `db.filipe-oliveira.cloud:5432` com certificado
+Let's Encrypt e as repassa ao container. Por isso:
+
+- a conexão **precisa** usar SSL (`sslmode=require`); sem SSL, quem responde é o roteador
+  HTTP do Traefik, e o erro é `expected authentication request from server, but received H`;
+- o `requirements.txt` fixa `psycopg2-binary==2.9.10`, que traz a libpq 16. A libpq 17
+  (versões mais novas do pacote) anuncia o protocolo `postgresql` na negociação TLS (ALPN),
+  o Traefik não reconhece e recusa a conexão com `tlsv1 alert no application protocol`.
+  Clientes JDBC, como o DBeaver, não fazem isso e conectam com qualquer configuração.
 
 ### 5.5 Configurar a conexão
 
@@ -198,11 +206,15 @@ e o registro de correções em `logs/correcoes_territorios.csv`. O aviso
 cp .env.example .env               # Windows: copy .env.example .env
 ```
 
-Abrir o `.env` e colar a Service URI em `DATABASE_URL`:
+Abrir o `.env` e preencher usuário e senha em `DATABASE_URL`:
 
 ```
-DATABASE_URL=postgres://avnadmin:SENHA@HOST.aivencloud.com:PORTA/defaultdb?sslmode=require
+DATABASE_URL=postgres://USUARIO:SENHA@db.filipe-oliveira.cloud:5432/defaultdb?sslmode=require
 ```
+
+Se a senha tiver caracteres especiais (`@`, `:`, `/`, `#`, `%`, acentos), eles precisam
+ser codificados na URL: `@` vira `%40`, `Ç` vira `%C3%87`. Para gerar a versão codificada:
+`python -c "from urllib.parse import quote; print(quote('SENHA', safe=''))"`.
 
 O `.env` está no `.gitignore`. **Nunca** fazer commit desse arquivo nem compartilhar a
 URI em canal público.
@@ -239,11 +251,11 @@ ser iguais aos da linha `Total` da planilha), a estrutura das tabelas e o espaç
 ocupado. Para guardar a saída como evidência:
 
 ```bash
-psql "$URL" -f sql/03_validacao.sql > logs/validacao_aiven.txt
+psql "$URL" -f sql/03_validacao.sql > logs/validacao_vps.txt
 ```
 
 Sem o `psql`, o mesmo arquivo pode ser executado em um cliente gráfico como DBeaver ou
-pgAdmin, conectado com a mesma Service URI.
+pgAdmin, com host `db.filipe-oliveira.cloud`, porta 5432, banco `defaultdb` e SSL ativado.
 
 ### 5.8 Abrir o dashboard
 
@@ -261,7 +273,11 @@ encerrar, `Ctrl+C` no terminal. Depois de rodar o ETL de novo, usar o botão
 
 | Sintoma | Causa provável | Solução |
 |---|---|---|
-| `could not translate host name ... to address` | Serviço da Aiven desligado por inatividade | Religar no console (passo 5.4) e esperar ficar **Running** |
+| `Connection timed out` | Container do banco parado ou porta 5432 bloqueada na VPS | Verificar o container e o firewall com quem administra a VPS |
+| `received H` ou `404 page not found` | Conexão sem SSL caiu no roteador HTTP do Traefik | Usar `sslmode=require` no `.env` (passo 5.5) |
+| `tlsv1 alert no application protocol` | `psycopg2-binary` com libpq 17 | `pip install -r requirements.txt` (reinstala a 2.9.10) |
+| `password authentication failed` | Senha errada ou com caractere especial sem codificar | Conferir a senha e codificá-la (passo 5.5) |
+| `ensurepip is not available` ao criar o `.venv` | Pacote de venv do Python ausente | `sudo apt install python3-venv` (passo 5.1) |
 | `DATABASE_URL não definida` | Arquivo `.env` ausente ou vazio | Refazer o passo 5.5 |
 | `ModuleNotFoundError` | Ambiente virtual inativo ou dependências não instaladas | `source .venv/bin/activate` e `pip install -r requirements.txt` |
 | `[transform] validação falhou: ...` | Arquivo original alterado ou versão diferente da planilha | Restaurar os arquivos de `data/raw/` com `git checkout -- data/raw` |

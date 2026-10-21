@@ -1,7 +1,7 @@
 pandas>=2.0
 openpyxl>=3.1
 pdfplumber>=0.11
-psycopg2-binary>=2.9
+psycopg2-binary==2.9.10  # libpq 16: a libpq 17 envia ALPN e o Traefik da VPS recusa o TLS
 python-dotenv>=1.0
 streamlit>=1.50
 plotly>=5.20
