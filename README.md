@@ -96,36 +96,7 @@ dashboard/app.py       dashboard Streamlit (filtros por território e tipo de cr
    fonte publica o valor explicitamente.
 8. **Sem amostragem nem filtro.** A base inteira tem 4.587 linhas; não há ganho em reduzir.
 
-## 4. Modelo do banco
-
-Modelo estrela: uma tabela fato com as contagens e três dimensões descritivas. A escolha
-se justifica porque a base é numérica e agregada, e as perguntas do projeto são somas por
-território, município e tipo de crime. Os textos ficam nas dimensões, sem repetição.
-
-```
-dim_territorio (26) 1 ── N dim_municipio (417) 1 ── N fato_vitimas (4.587) N ── 1 dim_tipo_crime (11)
-```
-
-| Tabela | Campo | Tipo | Restrição |
-|---|---|---|---|
-| `dim_territorio` | `id_territorio` | `SMALLINT` | chave primária |
-| | `nome_territorio` | `VARCHAR(50)` | obrigatório, único |
-| `dim_municipio` | `cod_ibge` | `INTEGER` | chave primária, entre 290000 e 299999 |
-| | `nome_municipio` | `VARCHAR(60)` | obrigatório |
-| | `id_territorio` | `SMALLINT` | chave estrangeira → `dim_territorio` |
-| `dim_tipo_crime` | `id_tipo_crime` | `SMALLINT` | chave primária |
-| | `codigo` | `VARCHAR(40)` | obrigatório, único |
-| | `nome_tipo_crime` | `VARCHAR(40)` | obrigatório, único |
-| | `letal` | `BOOLEAN` | obrigatório |
-| `fato_vitimas` | `ano` | `SMALLINT` | parte da chave primária |
-| | `cod_ibge` | `INTEGER` | parte da chave primária; chave estrangeira → `dim_municipio` |
-| | `id_tipo_crime` | `SMALLINT` | parte da chave primária; chave estrangeira → `dim_tipo_crime` |
-| | `qtd_vitimas` | `INTEGER` | obrigatório, `>= 0` |
-
-Visões de consumo (`sql/02_agregacoes.sql`): `vw_territorio_crime`, `vw_territorio_resumo`,
-`vw_municipio_resumo` e `vw_crime_estado`. São visões comuns, calculadas na consulta.
-
-### Quantidade de dados
+## 4. Quantidade de dados
 
 | Tabela | Linhas |
 |---|---|
@@ -268,39 +239,3 @@ território, por tipo de crime e por município, e o cruzamento território × t
 crime, com filtros por Território de Identidade, tipo de crime e crimes letais. Para
 encerrar, `Ctrl+C` no terminal. Depois de rodar o ETL de novo, usar o botão
 **Recarregar dados** na barra lateral.
-
-### 5.9 Problemas comuns
-
-| Sintoma | Causa provável | Solução |
-|---|---|---|
-| `Connection timed out` | Container do banco parado ou porta 5432 bloqueada na VPS | Verificar o container e o firewall com quem administra a VPS |
-| `received H` ou `404 page not found` | Conexão sem SSL caiu no roteador HTTP do Traefik | Usar `sslmode=require` no `.env` (passo 5.5) |
-| `tlsv1 alert no application protocol` | `psycopg2-binary` com libpq 17 | `pip install -r requirements.txt` (reinstala a 2.9.10) |
-| `password authentication failed` | Senha errada ou com caractere especial sem codificar | Conferir a senha e codificá-la (passo 5.5) |
-| `ensurepip is not available` ao criar o `.venv` | Pacote de venv do Python ausente | `sudo apt install python3-venv` (passo 5.1) |
-| `DATABASE_URL não definida` | Arquivo `.env` ausente ou vazio | Refazer o passo 5.5 |
-| `ModuleNotFoundError` | Ambiente virtual inativo ou dependências não instaladas | `source .venv/bin/activate` e `pip install -r requirements.txt` |
-| `[transform] validação falhou: ...` | Arquivo original alterado ou versão diferente da planilha | Restaurar os arquivos de `data/raw/` com `git checkout -- data/raw` |
-| `relation "fato_vitimas" does not exist` no dashboard | Carga ainda não executada neste banco | Rodar o passo 5.6 |
-| `psql: command not found` | Cliente PostgreSQL não instalado | Instalar (passo 5.1) ou usar um cliente gráfico |
-
-### 5.10 Limpeza da base anterior (opcional, uma vez)
-
-Só é necessário em bancos que receberam a primeira versão do projeto (base do Espírito
-Santo). Remove a tabela `ocorrencias` e as visões antigas:
-
-```bash
-psql "$URL" -f sql/00_limpeza_base_antiga.sql
-```
-
-## 6. Limitações conhecidas
-
-- **Sem perfil da vítima.** A planilha não traz raça/cor, idade nem relação com o autor.
-- **Um único ano.** Não há série temporal enquanto outros anos não forem carregados; o
-  modelo já tem a coluna `ano` para recebê-los.
-- **Zeros ambíguos.** A fonte não distingue "nenhum caso" de "sem registro".
-- **Estupro agregado.** A coluna soma estupro e estupro de vulnerável (nota da SSP-BA).
-- **Territórios de 2011.** O anexo lista 26 territórios; a divisão atual do estado tem 27.
-  Para atualizar, basta trocar o PDF e ajustar `CORRECOES_ANEXO`; a tabela fato não muda.
-- **Contagem absoluta.** Não há taxa por habitante; municípios populosos lideram em
-  números absolutos.
