@@ -3,7 +3,8 @@
 Rodar na raiz do projeto:
     streamlit run dashboard/app.py
 
-Faz uma única consulta ao banco (em cache) e agrega em pandas. A base tem 4.587
+Faz uma única consulta ao banco (em cache) e agrega em pandas, inclusive as taxas por
+100 mil habitantes, para que elas respeitem os filtros. A base tem 4.587
 linhas por ano, então os filtros respondem sem novas idas ao banco.
 """
 import os
@@ -26,7 +27,10 @@ ESCALA_SEQ = ["#eef5fd", "#cde2fb", "#86b6ef", "#3987e5", "#1c5cab", "#0d366b"]
 SQL = """
     SELECT f.ano,
            t.nome_territorio AS territorio,
+           m.cod_ibge,
            m.nome_municipio  AS municipio,
+           m.populacao_estimada_2026 AS populacao,
+           m.area_km2,
            c.id_tipo_crime,
            c.codigo,
            c.nome_tipo_crime AS crime,
@@ -51,7 +55,26 @@ def carregar_base() -> pd.DataFrame:
             df = pd.DataFrame(cur.fetchall(), columns=colunas)
     df["crime"] = df["crime"].str.capitalize()          # "LESÃO CORPORAL DOLOSA" -> "Lesão corporal dolosa"
     df["categoria"] = df["letal"].map({True: "Letal", False: "Não letal"})
+    df["area_km2"] = df["area_km2"].astype(float)       # NUMERIC chega como Decimal
     return df
+
+
+# Faixas iguais às da vw_porte_municipio (sql/02_agregacoes.sql): (limite superior, rótulo)
+FAIXAS_PORTE = [(20_000, "até 20 mil hab."), (50_000, "20 a 50 mil hab."),
+                (100_000, "50 a 100 mil hab."), (500_000, "100 a 500 mil hab."),
+                (float("inf"), "mais de 500 mil hab.")]
+FAIXAS_DENSIDADE = [(10, "até 10 hab./km²"), (25, "10 a 25 hab./km²"), (50, "25 a 50 hab./km²"),
+                    (100, "50 a 100 hab./km²"), (float("inf"), "mais de 100 hab./km²")]
+LIMITE_PEQUENO = 20_000   # municípios menores que isso geram taxas instáveis
+
+
+def faixa(valor: float, faixas) -> str:
+    return next(rotulo for limite, rotulo in faixas if valor < limite)
+
+
+def taxa_100k(vitimas, populacao):
+    """Vítimas por 100 mil habitantes. Em agregados, recebe SOMAS (nunca média de taxas)."""
+    return 100_000 * vitimas / populacao
 
 
 def milhar(n) -> str:
@@ -69,20 +92,33 @@ def layout(fig, altura=360):
     return fig
 
 
-def barras(df: pd.DataFrame, categoria: str, titulo: str, altura: int, cor: str | None = None):
-    """Barras horizontais ordenadas, com o valor escrito ao lado de cada barra."""
-    df = df.sort_values("vitimas", ascending=True, kind="stable")
-    fig = px.bar(df, y=categoria, x="vitimas", orientation="h", title=titulo,
+ROTULOS = {"vitimas": "Vítimas", "taxa": "Taxa por 100 mil hab.", "populacao": "População",
+           "territorio": "Território", "municipio": "Município", "crime": "Tipo de crime",
+           "categoria": "Categoria", "faixa": "Faixa", "municipios": "Municípios"}
+
+
+def barras(df: pd.DataFrame, categoria: str, titulo: str, altura: int, cor: str | None = None,
+           valor: str = "vitimas", ordenar: bool = True):
+    """Barras horizontais com o valor escrito ao lado de cada barra.
+
+    valor: 'vitimas' (contagem) ou 'taxa' (por 100 mil hab.).
+    ordenar=False mantém a ordem recebida (ex.: faixas de porte), de cima para baixo.
+    """
+    if ordenar:
+        df = df.sort_values(valor, ascending=True, kind="stable")
+        ordem = df[categoria].tolist()[::-1]
+    else:
+        ordem = df[categoria].tolist()
+    fig = px.bar(df, y=categoria, x=valor, orientation="h", title=titulo,
                  color=cor,
                  color_discrete_map={"Não letal": COR_NAO_LETAL, "Letal": COR_LETAL},
                  color_discrete_sequence=[COR_NAO_LETAL],
-                 category_orders={categoria: df[categoria].tolist()[::-1],
-                                  "categoria": ["Não letal", "Letal"]},
-                 hover_data={c: True for c in df.columns if c not in (categoria, "vitimas", cor)},
-                 labels={"vitimas": "Vítimas", "territorio": "Território", "municipio": "Município",
-                         "crime": "Tipo de crime", "categoria": "Categoria"})
-    fig.update_traces(texttemplate="%{x:,.0f}", textposition="outside", cliponaxis=False,
-                      marker_line_width=0)
+                 category_orders={categoria: ordem, "categoria": ["Não letal", "Letal"]},
+                 hover_data={c: (":,.1f" if c == "taxa" else ":,.0f" if c in ("vitimas", "populacao") else True)
+                             for c in df.columns if c not in (categoria, valor, cor)},
+                 labels=ROTULOS)
+    fig.update_traces(texttemplate="%{x:,.1f}" if valor == "taxa" else "%{x:,.0f}",
+                      textposition="outside", cliponaxis=False, marker_line_width=0)
     fig.update_xaxes(title=None)
     return layout(fig, altura)
 
@@ -90,7 +126,7 @@ def barras(df: pd.DataFrame, categoria: str, titulo: str, altura: int, cor: str 
 # ------------------------------------------------------------------ cabeçalho e filtros
 st.title("Violência contra a mulher na Bahia")
 st.caption("Quantidade de vítimas por Território de Identidade, município e tipo de crime. "
-           "Fonte: SSP-BA. Dados agregados; nenhum caso individual é exibido.")
+           "Fontes: SSP-BA (vítimas) e IBGE (população). Dados agregados; nenhum caso individual é exibido.")
 
 if st.sidebar.button("Recarregar dados", help="Limpa o cache; use depois de rodar o ETL de novo."):
     st.cache_data.clear()
@@ -101,7 +137,7 @@ except KeyError:
     st.error("DATABASE_URL não definida. Copie .env.example para .env e preencha.")
     st.stop()
 except psycopg2.Error as erro:
-    st.error(f"Não foi possível consultar o banco. Verifique se o serviço da Aiven está ligado "
+    st.error(f"Não foi possível consultar o banco. Verifique se o banco está no ar "
              f"e se o ETL já foi executado.\n\n{erro}")
     st.stop()
 
@@ -117,10 +153,28 @@ crime_sel = c3.multiselect("Tipos de crime", crimes, placeholder="Todos")
 so_letais = c4.toggle("Só crimes letais", value=False,
                       help="Homicídio doloso, feminicídio e lesão corporal seguida de morte.")
 
+medida = st.radio("Medida", ["Vítimas", "Taxa por 100 mil habitantes"], horizontal=True,
+                  help="A taxa divide as vítimas pela população estimada pelo IBGE (referência "
+                       "jul/2024), permitindo comparar lugares de tamanhos diferentes.")
+em_taxa = medida != "Vítimas"
+valor = "taxa" if em_taxa else "vitimas"
+rotulo = "Taxa de vítimas por 100 mil hab." if em_taxa else "Vítimas"
+
 no_territorio = base[(base["ano"] == ano) & (base["territorio"].isin(terr_sel or territorios))]
 dados = no_territorio[no_territorio["crime"].isin(crime_sel or crimes)]
 if so_letais:
     dados = dados[dados["letal"]]
+
+# Uma linha por município: a população não pode ser somada a partir de `dados`, que tem
+# uma linha por município x crime e multiplicaria a população pelo nº de crimes.
+pop_mun = (no_territorio.drop_duplicates("cod_ibge")
+           [["cod_ibge", "municipio", "territorio", "populacao", "area_km2"]])
+pop_total = int(pop_mun["populacao"].sum())
+
+
+def taxa_txt(vitimas) -> str:
+    return f"{taxa_100k(vitimas, pop_total):.2f}".replace(".", ",") if pop_total else "0"
+
 
 # ------------------------------------------------------------------ indicadores
 # Seguem só o filtro de território, para não zerar quando um tipo de crime é escolhido.
@@ -129,15 +183,23 @@ def soma(filtro) -> int:
 
 total = soma(slice(None))
 letais = soma(no_territorio["letal"])
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("Vítimas (todos os crimes)", milhar(total))
-k2.metric("Feminicídios", milhar(soma(no_territorio["codigo"] == "feminicidio")))
-k3.metric("Tentativas de feminicídio", milhar(soma(no_territorio["codigo"] == "tentativa_de_feminicidio")))
-k4.metric("Vítimas de crimes letais", milhar(letais))
+indicadores = [("Vítimas (todos os crimes)", total),
+               ("Feminicídios", soma(no_territorio["codigo"] == "feminicidio")),
+               ("Tentativas de feminicídio", soma(no_territorio["codigo"] == "tentativa_de_feminicidio")),
+               ("Vítimas de crimes letais", letais)]
+for coluna, (nome, n) in zip(st.columns(4), indicadores):
+    if em_taxa:
+        coluna.metric(f"{nome} por 100 mil hab.", taxa_txt(n), help=f"{milhar(n)} vítimas")
+    else:
+        coluna.metric(nome, milhar(n))
 pct_letais = f"{100 * letais / total:.2f}".replace(".", ",") if total else "0"
 st.caption(f"Indicadores de {ano} para "
-           f"{'os territórios selecionados' if terr_sel else 'todo o estado'}, considerando todos os tipos de crime. "
-           f"Crimes letais são {pct_letais}% das vítimas.")
+           f"{'os territórios selecionados' if terr_sel else 'todo o estado'} "
+           f"({milhar(pop_total)} habitantes), considerando todos os tipos de crime. "
+           f"Crimes letais são {pct_letais}% das vítimas."
+           + (" Taxas calculadas sobre a população total, não a feminina: servem para comparar "
+              "lugares entre si, não para comparar com taxas oficiais por 100 mil mulheres."
+              if em_taxa else ""))
 
 if dados["vitimas"].sum() == 0:
     st.info("Nenhuma vítima registrada para os filtros escolhidos.")
@@ -145,30 +207,70 @@ if dados["vitimas"].sum() == 0:
 
 # ------------------------------------------------------------------ território e tipo de crime
 a, b = st.columns(2)
-por_territorio = dados.groupby("territorio", as_index=False)["vitimas"].sum()
-a.plotly_chart(barras(por_territorio, "territorio", "Vítimas por Território de Identidade",
-                      altura=max(300, 26 * len(por_territorio) + 80)),
+por_territorio = (dados.groupby("territorio", as_index=False)["vitimas"].sum()
+                  .merge(pop_mun.groupby("territorio", as_index=False)["populacao"].sum(), on="territorio"))
+por_territorio["taxa"] = taxa_100k(por_territorio["vitimas"], por_territorio["populacao"])
+a.plotly_chart(barras(por_territorio, "territorio", f"{rotulo} por Território de Identidade",
+                      altura=max(300, 26 * len(por_territorio) + 80), valor=valor),
                width="stretch")
 
 por_crime = dados.groupby(["crime", "categoria"], as_index=False)["vitimas"].sum()
-b.plotly_chart(barras(por_crime, "crime", "Vítimas por tipo de crime",
-                      altura=max(300, 34 * len(por_crime) + 110), cor="categoria"),
+por_crime["taxa"] = taxa_100k(por_crime["vitimas"], pop_total)
+b.plotly_chart(barras(por_crime, "crime", f"{rotulo} por tipo de crime",
+                      altura=max(300, 34 * len(por_crime) + 110), cor="categoria", valor=valor),
                width="stretch")
 
-por_municipio = (dados.groupby(["municipio", "territorio"], as_index=False)["vitimas"].sum()
-                 .sort_values("vitimas", ascending=False, kind="stable").head(15))
-b.plotly_chart(barras(por_municipio, "municipio", "15 municípios com mais vítimas", altura=470),
+por_municipio = (dados.groupby("cod_ibge", as_index=False)["vitimas"].sum()
+                 .merge(pop_mun, on="cod_ibge")
+                 [["municipio", "territorio", "populacao", "vitimas"]])
+por_municipio["taxa"] = taxa_100k(por_municipio["vitimas"], por_municipio["populacao"])
+if em_taxa:
+    incluir_pequenos = b.toggle(f"Incluir municípios com menos de {milhar(LIMITE_PEQUENO)} habitantes",
+                                value=False,
+                                help="Nesses municípios, um ou dois casos já produzem taxas muito altas.")
+    if not incluir_pequenos:
+        por_municipio = por_municipio[por_municipio["populacao"] >= LIMITE_PEQUENO]
+por_municipio = por_municipio.sort_values(valor, ascending=False, kind="stable").head(15)
+b.plotly_chart(barras(por_municipio, "municipio",
+                      "15 municípios com maior taxa" if em_taxa else "15 municípios com mais vítimas",
+                      altura=470, valor=valor),
                width="stretch")
-b.caption("Contagens absolutas, sem ajuste por população: municípios mais populosos tendem a liderar.")
+b.caption("Taxa por 100 mil habitantes; passe o cursor para ver vítimas e população." if em_taxa else
+          "Contagens absolutas, sem ajuste por população: municípios mais populosos tendem a liderar. "
+          "Use a medida “Taxa por 100 mil habitantes” para comparar municípios de tamanhos diferentes.")
+
+# ------------------------------------------------------------------ porte e densidade
+st.subheader("Taxa por porte e densidade do município")
+por_mun_todos = (dados.groupby("cod_ibge", as_index=False)["vitimas"].sum()
+                 .merge(pop_mun, on="cod_ibge", how="right").fillna({"vitimas": 0}))
+por_mun_todos["densidade"] = por_mun_todos["populacao"] / por_mun_todos["area_km2"]
+p1, p2 = st.columns(2)
+for coluna, campo, faixas, titulo in [
+        (p1, "populacao", FAIXAS_PORTE, "Por porte populacional"),
+        (p2, "densidade", FAIXAS_DENSIDADE, "Por densidade demográfica")]:
+    grupo = por_mun_todos.assign(faixa=por_mun_todos[campo].map(lambda v: faixa(v, faixas)))
+    grupo = (grupo.groupby("faixa", as_index=False)
+             .agg(vitimas=("vitimas", "sum"), populacao=("populacao", "sum"),
+                  municipios=("cod_ibge", "count")))
+    ordem = [r for _, r in faixas if r in set(grupo["faixa"])]
+    grupo = grupo.set_index("faixa").loc[ordem].reset_index()
+    grupo["taxa"] = taxa_100k(grupo["vitimas"], grupo["populacao"])
+    coluna.plotly_chart(barras(grupo, "faixa", titulo, altura=300, valor="taxa", ordenar=False),
+                        width="stretch")
+st.caption("Vítimas por 100 mil habitantes somando todos os municípios de cada faixa (respeita os "
+           "filtros acima). Faixas de porte do IBGE; densidade em habitantes por km², um indicador "
+           "aproximado de quão urbano é o município.")
 
 # ------------------------------------------------------------------ cruzamento território x crime
 st.subheader("Território × tipo de crime")
 MODOS = {
     "Participação do território no total do crime": "pct_crime",
     "Composição dentro do território": "pct_territorio",
+    "Taxa por 100 mil habitantes": "taxa",
     "Vítimas (valor absoluto)": "vitimas",
 }
 modo = MODOS[st.radio("Cor do mapa de calor", list(MODOS), horizontal=True)]
+pop_territorio = pop_mun.groupby("territorio")["populacao"].sum()
 
 matriz = (dados.pivot_table(index="territorio", columns="crime", values="vitimas",
                             aggfunc="sum", fill_value=0)
@@ -181,6 +283,9 @@ if modo == "pct_crime":
 elif modo == "pct_territorio":
     cor = 100 * matriz.div(matriz.sum(axis=1).replace(0, float("nan")), axis=0)
     legenda, sufixo = "% no território", "% das vítimas deste território são desse crime"
+elif modo == "taxa":
+    cor = taxa_100k(matriz, pop_territorio.reindex(matriz.index).values[:, None])
+    legenda, sufixo = "por 100 mil hab.", " por 100 mil habitantes"
 else:
     cor, legenda, sufixo = matriz, "Vítimas", ""
 cor = cor.astype(float).fillna(0)

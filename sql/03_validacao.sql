@@ -30,6 +30,26 @@ SELECT t.id_territorio, t.nome_territorio, COUNT(*) AS municipios
 FROM dim_territorio t JOIN dim_municipio m USING (id_territorio)
 GROUP BY t.id_territorio, t.nome_territorio ORDER BY t.id_territorio;
 
+-- 4b. Dados do IBGE: todo município com código de 7 dígitos coerente, área e população
+--     (esperado: 0 linhas; população estimada 2026 da Bahia somando ~14,9 milhões)
+SELECT cod_ibge, nome_municipio, codigo_ibge7, area_km2, populacao_censo_2022, populacao_estimada_2026
+FROM dim_municipio
+WHERE codigo_ibge7 IS NULL OR codigo_ibge7 / 10 <> cod_ibge
+   OR area_km2 IS NULL OR populacao_censo_2022 IS NULL OR populacao_estimada_2026 IS NULL;
+SELECT SUM(populacao_censo_2022) AS pop_censo_2022, SUM(populacao_estimada_2026) AS pop_estimada_2026,
+       SUM(area_km2) AS area_km2 FROM dim_municipio;
+
+-- 4c. Visões de taxa: todas precisam somar o mesmo total do fato (esperado: 118.380
+--     em cada coluna) e cobrir os 417 municípios e a população inteira
+SELECT (SELECT SUM(qtd_vitimas)   FROM fato_vitimas)                                  AS fato,
+       (SELECT SUM(total_vitimas) FROM vw_municipio_taxa)                             AS vw_municipio_taxa,
+       (SELECT SUM(total_vitimas) FROM vw_territorio_taxa)                            AS vw_territorio_taxa,
+       (SELECT SUM(qtd_vitimas)   FROM vw_crime_taxa_territorio)                      AS vw_crime_taxa_territorio,
+       (SELECT SUM(total_vitimas) FROM vw_porte_municipio WHERE dimensao = 'porte')     AS vw_porte_porte,
+       (SELECT SUM(total_vitimas) FROM vw_porte_municipio WHERE dimensao = 'densidade') AS vw_porte_densidade,
+       (SELECT COUNT(*)           FROM vw_municipio_taxa)                             AS municipios,
+       (SELECT SUM(populacao)     FROM vw_territorio_taxa)                            AS populacao;
+
 -- 5. Proporção de células com zero (a fonte não distingue "nenhum caso" de "sem registro")
 SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE qtd_vitimas = 0) / COUNT(*), 1) AS pct_zeros FROM fato_vitimas;
 

@@ -33,10 +33,24 @@ CREATE TABLE IF NOT EXISTS fato_vitimas (
     PRIMARY KEY (ano, cod_ibge, id_tipo_crime)               -- impede carga duplicada
 );
 
+-- Colunas do IBGE Cidades. ALTER em vez de CREATE para valer também em bancos já criados
+-- (CREATE TABLE IF NOT EXISTS não acrescenta colunas). Entram sem NOT NULL porque a tabela
+-- pode já ter linhas neste ponto; o load.py aplica o NOT NULL depois do TRUNCATE + COPY.
+ALTER TABLE dim_municipio
+    ADD COLUMN IF NOT EXISTS codigo_ibge7            INTEGER       UNIQUE
+                             CHECK (codigo_ibge7 BETWEEN 2900000 AND 2999999 AND codigo_ibge7 / 10 = cod_ibge),
+    ADD COLUMN IF NOT EXISTS area_km2                NUMERIC(10,3) CHECK (area_km2 > 0),
+    ADD COLUMN IF NOT EXISTS populacao_censo_2022    INTEGER       CHECK (populacao_censo_2022 > 0),
+    ADD COLUMN IF NOT EXISTS populacao_estimada_2026 INTEGER       CHECK (populacao_estimada_2026 > 0);
+
 CREATE INDEX IF NOT EXISTS idx_municipio_territorio ON dim_municipio (id_territorio);
 CREATE INDEX IF NOT EXISTS idx_fato_tipo_crime      ON fato_vitimas (id_tipo_crime);
 
 COMMENT ON TABLE dim_territorio IS 'Territórios de Identidade da Bahia (Anexo II, 2011).';
-COMMENT ON TABLE dim_municipio  IS 'Municípios da Bahia (código IBGE de 6 dígitos) e o território de cada um.';
+COMMENT ON TABLE dim_municipio  IS 'Municípios da Bahia (código IBGE de 6 dígitos), o território de cada um e população/área do IBGE.';
+COMMENT ON COLUMN dim_municipio.codigo_ibge7            IS 'Código IBGE com dígito verificador (7 dígitos), padrão de IBGE/DATASUS/Siconfi.';
+COMMENT ON COLUMN dim_municipio.area_km2                IS 'Área territorial em km² (IBGE Cidades, referência 2025).';
+COMMENT ON COLUMN dim_municipio.populacao_censo_2022    IS 'População residente no Censo 2022 (IBGE).';
+COMMENT ON COLUMN dim_municipio.populacao_estimada_2026 IS 'População estimada (IBGE Cidades, rótulo 2026).';
 COMMENT ON TABLE dim_tipo_crime IS 'Tipos de crime publicados pela SSP-BA. Estupro inclui estupro de vulnerável.';
 COMMENT ON TABLE fato_vitimas   IS 'Quantidade de vítimas mulheres por ano, município e tipo de crime (SSP-BA).';

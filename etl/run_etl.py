@@ -10,12 +10,13 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from etl.extract import extrair_territorios, extrair_vitimas
+from etl.extract import extrair_ibge, extrair_territorios, extrair_vitimas
 from etl.transform import transformar
 
 RAIZ = Path(__file__).resolve().parent.parent
 XLSX_VITIMAS = RAIZ / "data" / "raw" / "06_VIOLENCIA_CONTRA_MULHER_2025.xlsx"
 PDF_TERRITORIOS = RAIZ / "data" / "raw" / "Anexo_II_-_Relacao_Territorios_de_Identidade.pdf"
+CSV_IBGE = RAIZ / "data" / "raw" / "IBGE_CIDADES_BAHIA_MUNICIPIOS.csv"
 
 
 def main() -> None:
@@ -23,11 +24,13 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="não conecta ao banco")
     parser.add_argument("--vitimas", default=str(XLSX_VITIMAS), help="planilha XLSX da SSP-BA")
     parser.add_argument("--territorios", default=str(PDF_TERRITORIOS), help="PDF do Anexo II")
+    parser.add_argument("--ibge", default=str(CSV_IBGE), help="CSV do IBGE Cidades (todos os municípios da BA)")
     args = parser.parse_args()
 
     vitimas_bruto, totais, ano = extrair_vitimas(args.vitimas)
     territorios_bruto = extrair_territorios(args.territorios)
-    tabelas, correcoes = transformar(vitimas_bruto, totais, ano, territorios_bruto)
+    ibge_bruto = extrair_ibge(args.ibge)
+    tabelas, correcoes = transformar(vitimas_bruto, totais, ano, territorios_bruto, ibge_bruto)
 
     processed = RAIZ / "data" / "processed"
     processed.mkdir(parents=True, exist_ok=True)
