@@ -2,7 +2,8 @@
 
 Saída (modelo estrela):
     territorios   id_territorio, nome_territorio
-    municipios    cod_ibge, nome_municipio, id_territorio
+    municipios    cod_ibge, nome_municipio, id_territorio, codigo_ibge7, area_km2,
+                  populacao_censo_2022, populacao_estimada_2026
     tipos_crime   id_tipo_crime, codigo, nome_tipo_crime, letal
     vitimas       ano, cod_ibge, id_tipo_crime, qtd_vitimas
 
@@ -32,6 +33,12 @@ CORRECOES_ANEXO = {
     "Barro Alto Cafarnaum": ["Barro Alto", "Cafarnaum"],
     "Bonito Ibicoara": ["Bonito", "Ibicoara"],
     "Lençóis Marcionílio Souza": ["Lençóis", "Marcionílio Souza"],
+}
+
+# Mesmo código IBGE com grafia diferente entre a planilha da SSP-BA e o IBGE Cidades.
+# O join é pelo código; esta lista só libera a conferência de nomes. (nome SSP-BA, nome IBGE)
+GRAFIAS_SSP_IBGE = {
+    ("Santa Teresinha", "Santa Terezinha"),
 }
 
 
@@ -109,6 +116,48 @@ def _municipios(bruto: pd.DataFrame, vinculo: pd.DataFrame) -> pd.DataFrame:
     return dim[["cod_ibge", "nome_municipio", "id_territorio"]]
 
 
+def _com_ibge(dim: pd.DataFrame, bruto: pd.DataFrame) -> pd.DataFrame:
+    """Acrescenta população e área do IBGE Cidades à dimensão de municípios.
+
+    A SSP-BA usa o código IBGE de 6 dígitos e o IBGE Cidades o de 7 (o último é o dígito
+    verificador), então o join é feito por codigo_ibge7 // 10 = cod_ibge.
+    """
+    ibge = pd.DataFrame({
+        "codigo_ibge7": pd.to_numeric(bruto["codigo_ibge7"], errors="coerce").astype("Int64"),
+        "nome_ibge": bruto["nome_ibge"].map(_limpar),
+        "area_km2": pd.to_numeric(bruto["area_km2"], errors="coerce"),
+        "populacao_censo_2022": pd.to_numeric(bruto["populacao_censo_2022"], errors="coerce"),
+        "populacao_estimada_2026": pd.to_numeric(bruto["populacao_estimada_2026"], errors="coerce"),
+    })
+    _exigir(ibge["codigo_ibge7"].between(2900000, 2999999).all(), "código IBGE (7 dígitos) fora da faixa da Bahia")
+    _exigir(ibge["codigo_ibge7"].is_unique, "código IBGE repetido no CSV do IBGE")
+    numericas = ["area_km2", "populacao_censo_2022", "populacao_estimada_2026"]
+    _exigir(ibge[numericas].notna().all().all(), "área ou população vazia/não numérica no CSV do IBGE")
+    _exigir((ibge[numericas] > 0).all().all(), "área ou população não positiva no CSV do IBGE")
+    populacoes = ["populacao_censo_2022", "populacao_estimada_2026"]
+    _exigir((ibge[populacoes] % 1 == 0).all().all(), "população não inteira no CSV do IBGE")
+
+    ibge["cod_ibge"] = (ibge["codigo_ibge7"] // 10).astype(int)
+    juntos = dim.merge(ibge, on="cod_ibge", how="outer", indicator=True)
+    so_ssp = juntos[juntos["_merge"] == "left_only"]["nome_municipio"].tolist()
+    so_ibge = juntos[juntos["_merge"] == "right_only"]["nome_ibge"].tolist()
+    _exigir(not so_ssp, f"municípios da SSP-BA sem dados no IBGE: {so_ssp}")
+    _exigir(not so_ibge, f"municípios do IBGE que não existem na planilha da SSP-BA: {so_ibge}")
+
+    # conferência extra do join: o nome tem que bater (ignorando acento, caixa e pontuação),
+    # salvo as grafias divergentes já conhecidas entre SSP-BA e IBGE Cidades
+    diferente = juntos["nome_municipio"].map(_chave) != juntos["nome_ibge"].map(_chave)
+    conhecido = [(a, b) in GRAFIAS_SSP_IBGE for a, b in zip(juntos["nome_municipio"], juntos["nome_ibge"])]
+    nomes_diferentes = juntos[diferente & ~pd.Series(conhecido, index=juntos.index)]
+    _exigir(nomes_diferentes.empty, "mesmo código com nomes diferentes: "
+            f"{list(zip(nomes_diferentes['nome_municipio'], nomes_diferentes['nome_ibge']))}")
+
+    juntos["codigo_ibge7"] = juntos["codigo_ibge7"].astype(int)
+    for c in populacoes:
+        juntos[c] = juntos[c].astype(int)
+    return juntos[["cod_ibge", "nome_municipio", "id_territorio", "codigo_ibge7", *numericas]]
+
+
 def _tipos_crime(colunas: list[str]) -> pd.DataFrame:
     return pd.DataFrame({
         "id_tipo_crime": range(1, len(colunas) + 1),   # ordem das colunas na planilha
@@ -140,10 +189,11 @@ def _vitimas(bruto: pd.DataFrame, tipos: pd.DataFrame, totais: pd.Series, ano: i
 
 # ---------------------------------------------------------------- pipeline
 def transformar(vitimas_bruto: pd.DataFrame, totais: pd.Series, ano: int,
-                territorios_bruto: pd.DataFrame) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
+                territorios_bruto: pd.DataFrame,
+                ibge_bruto: pd.DataFrame) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
     """Retorna ({nome_tabela: DataFrame}, correções aplicadas ao anexo)."""
     territorios, vinculo, correcoes = _territorios(territorios_bruto)
-    municipios = _municipios(vitimas_bruto, vinculo)
+    municipios = _com_ibge(_municipios(vitimas_bruto, vinculo), ibge_bruto)
     tipos = _tipos_crime([c for c in vitimas_bruto.columns if c not in ("ID", "MUNICÍPIO")])
     vitimas = _vitimas(vitimas_bruto, tipos, totais, ano)
 
@@ -151,7 +201,8 @@ def transformar(vitimas_bruto: pd.DataFrame, totais: pd.Series, ano: int,
 
     print(f"[transform] {len(territorios)} territórios | {len(municipios)} municípios | "
           f"{len(tipos)} tipos de crime | {len(vitimas)} linhas no fato | "
-          f"{int(vitimas['qtd_vitimas'].sum())} vítimas | {len(correcoes)} correções no anexo")
+          f"{int(vitimas['qtd_vitimas'].sum())} vítimas | {len(correcoes)} correções no anexo | "
+          f"população estimada 2026: {int(municipios['populacao_estimada_2026'].sum())}")
     tabelas = {"territorios": territorios, "municipios": municipios,
                "tipos_crime": tipos, "vitimas": vitimas}
     return tabelas, correcoes

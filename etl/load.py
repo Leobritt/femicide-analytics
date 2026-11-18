@@ -1,4 +1,4 @@
-"""Carga: grava as quatro tabelas no PostgreSQL (Aiven) e recria as visões.
+"""Carga: grava as quatro tabelas no PostgreSQL e recria as visões.
 
 A carga é idempotente: as tabelas são esvaziadas e recarregadas numa única transação.
 Se algo falhar, nada é alterado no banco.
@@ -19,6 +19,8 @@ DESTINO = [
     ("vitimas", "fato_vitimas"),
 ]
 
+COLUNAS_IBGE = ["codigo_ibge7", "area_km2", "populacao_censo_2022", "populacao_estimada_2026"]
+
 
 def _copiar(cur, df: pd.DataFrame, tabela: str) -> None:
     buffer = io.StringIO()
@@ -34,6 +36,10 @@ def carregar(tabelas: dict[str, pd.DataFrame], database_url: str) -> None:
             cur.execute("TRUNCATE fato_vitimas, dim_municipio, dim_tipo_crime, dim_territorio;")
             for nome, tabela in DESTINO:
                 _copiar(cur, tabelas[nome], tabela)
+            # as colunas do IBGE são criadas aceitando nulo (ver 01_schema.sql); com a tabela
+            # recarregada, passam a exigir valor. É idempotente se já estiverem NOT NULL.
+            cur.execute("ALTER TABLE dim_municipio "
+                        + ", ".join(f"ALTER COLUMN {c} SET NOT NULL" for c in COLUNAS_IBGE) + ";")
             cur.execute((SQL_DIR / "02_agregacoes.sql").read_text(encoding="utf-8"))
 
             for _, tabela in DESTINO:
