@@ -48,7 +48,8 @@ sql/03_validacao.sql   contagens, totais de controle, estrutura e tamanho do ban
 sql/00_limpeza_base_antiga.sql  opcional: remove as tabelas da base anterior
 logs/validacao_aiven.txt        saída de sql/03_validacao.sql no banco anterior (Aiven), 09/10/2026
 logs/correcoes_territorios.csv  correções aplicadas aos nomes do anexo (gerado pelo ETL; fora do git)
-dashboard/app.py       dashboard Streamlit (filtros por território e tipo de crime)
+dashboard/app.py       dashboard Streamlit (filtros, indicadores e abas por território, município e crime)
+.streamlit/config.toml tema do dashboard (cores dos modos claro e escuro)
 ```
 
 ## 3. Processo de tratamento
@@ -304,11 +305,18 @@ pgAdmin, com host `db.filipe-oliveira.cloud`, porta 5432, banco `defaultdb` e SS
 streamlit run dashboard/app.py
 ```
 
-O navegador abre em http://localhost:8501. O dashboard mostra indicadores, vítimas por
-território, por tipo de crime e por município, e o cruzamento território × tipo de
-crime, com filtros por Território de Identidade, tipo de crime e crimes letais. A opção
-**Medida** alterna entre vítimas e taxa por 100 mil habitantes; em taxa, o ranking de
-municípios esconde por padrão os com menos de 20 mil habitantes, e a seção "Taxa por porte
-e densidade do município" compara faixas de tamanho e de densidade. Para
-encerrar, `Ctrl+C` no terminal. Depois de rodar o ETL de novo, usar o botão
-**Recarregar dados** na barra lateral.
+O navegador abre em http://localhost:8501. No topo ficam os filtros (ano, Territórios de
+Identidade, tipos de crime, só crimes letais) e a **Medida**, que alterna entre vítimas e
+taxa por 100 mil habitantes em toda a página. Abaixo, quatro indicadores e cinco abas:
+
+| Aba | Conteúdo |
+|---|---|
+| Visão geral | vítimas por tipo de crime e os 10 territórios com mais vítimas (ou maior taxa) |
+| Territórios | os 26 territórios; em taxa, com a linha da média da Bahia |
+| Municípios | ranking dos 15 maiores (em taxa, sem os de menos de 20 mil hab. por padrão) e ficha de um município, com busca |
+| Cruzamentos | taxa por porte e densidade do município e mapa de calor território × crime |
+| Dados | tabela por município com download em CSV (abre direto no Excel) e tabela território × crime |
+
+O tema (cores, modo claro e escuro) fica em `.streamlit/config.toml`. Para encerrar,
+`Ctrl+C` no terminal. Depois de rodar o ETL de novo, usar o botão **Atualizar dados**
+no canto superior direito.
