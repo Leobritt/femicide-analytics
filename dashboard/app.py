@@ -174,7 +174,7 @@ def barras(df: pd.DataFrame, categoria: str, valor: str, *, cor: str | None = No
         fig.update_traces(textposition="inside", insidetextanchor="end",
                           textfont=dict(color="#ffffff", size=12))
         fig.add_vline(x=referencia, line_dash="dot", line_width=1.5, line_color=COR["neutro"],
-                      layer="below",                       # atrás das barras e dos rótulos
+                      layer="above",                       # na frente: atrás, sumia quando as barras passavam dela
                       annotation_text=f"Bahia: {num(referencia, 1)}", annotation_position="top",
                       annotation_font=dict(size=12, color=COR["neutro"]))
     fig = layout(fig, altura or max(220, 30 * len(df) + 40))
