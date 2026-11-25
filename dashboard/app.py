@@ -308,14 +308,22 @@ aba_geral, aba_terr, aba_mun, aba_cruz, aba_dados = st.tabs(
 with aba_geral:
     g1, g2 = st.columns(2, gap="large")
     with g1:
-        titulo_secao(f"{nome_valor} por tipo de crime",
-                     "Laranja: crimes com resultado morte.")
-        grafico(barras(por_crime, "crime", valor, cor="categoria", altura=400))
+        # Dois gráficos com escalas próprias: num só, os crimes letais (dezenas ou centenas
+        # de vítimas) viravam riscos ao lado de ameaça (dezenas de milhares).
+        e_letal = por_crime["categoria"] == "Letal"
+        nao_letais, letais = por_crime[~e_letal], por_crime[e_letal]
+        titulo_secao(f"{nome_valor} por tipo de crime")
+        if len(nao_letais):
+            grafico(barras(nao_letais, "crime", valor, altura=30 * len(nao_letais) + 40))
+        if len(letais):
+            titulo_secao("Crimes com resultado morte", "Escala própria, bem menor que a do gráfico acima.")
+            fig_letais = barras(letais, "crime", valor, cor="categoria", altura=30 * len(letais) + 40)
+            grafico(fig_letais.update_layout(showlegend=False))
     with g2:
         top = por_territorio.sort_values(valor, ascending=False, kind="stable").head(10)
         titulo_secao(f"10 territórios com {'maior taxa' if em_taxa else 'mais vítimas'}",
                      "A lista completa está na aba Territórios.")
-        grafico(barras(top, "territorio", valor, referencia=referencia, altura=400))
+        grafico(barras(top, "territorio", valor, referencia=referencia, altura=420))
     if em_taxa:
         st.caption(nota_taxa)
 

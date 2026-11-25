@@ -311,7 +311,7 @@ taxa por 100 mil habitantes em toda a página. Abaixo, quatro indicadores e cinc
 
 | Aba | Conteúdo |
 |---|---|
-| Visão geral | vítimas por tipo de crime e os 10 territórios com mais vítimas (ou maior taxa) |
+| Visão geral | vítimas por tipo de crime, com os crimes letais num gráfico de escala própria, e os 10 territórios com mais vítimas (ou maior taxa) |
 | Territórios | os 26 territórios; em taxa, com a linha da média da Bahia |
 | Municípios | ranking dos 15 maiores (em taxa, sem os de menos de 20 mil hab. por padrão) e ficha de um município, com busca |
 | Cruzamentos | taxa por porte e densidade do município e mapa de calor território × crime |
