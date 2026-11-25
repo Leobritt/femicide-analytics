@@ -317,6 +317,7 @@ taxa por 100 mil habitantes em toda a página. Abaixo, quatro indicadores e cinc
 | Cruzamentos | taxa por porte e densidade do município e mapa de calor território × crime |
 | Dados | tabela por município com download em CSV (abre direto no Excel) e tabela território × crime |
 
-O tema (cores, modo claro e escuro) fica em `.streamlit/config.toml`. Para encerrar,
+O tema segue o do sistema; para trocar, menu **⋮** no canto superior direito → **System /
+Light / Dark**. As cores ficam em `.streamlit/config.toml`. Para encerrar,
 `Ctrl+C` no terminal. Depois de rodar o ETL de novo, usar o botão **Atualizar dados**
 no canto superior direito.

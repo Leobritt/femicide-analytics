@@ -1,9 +1,9 @@
 # Tema do dashboard. As cores seguem a mesma paleta dos gráficos (azul = destaque,
 # laranja = crimes letais), com tons próprios para o modo claro e para o escuro.
-# O Streamlit escolhe o modo pela preferência do sistema; o usuário pode trocar no menu.
+# O Streamlit segue a preferência do sistema; o usuário troca em ⋮ (System / Light / Dark).
 
 [client]
-toolbarMode = "minimal"      # esconde o botão "Deploy" e as opções de desenvolvedor
+toolbarMode = "viewer"       # menu ⋮ só com opções de quem visualiza (tema claro/escuro), sem o botão "Deploy"
 showSidebarNavigation = false
 
 [theme]

@@ -7,8 +7,8 @@ Faz uma única consulta ao banco (em cache) e agrega em pandas, inclusive as tax
 100 mil habitantes, para que elas respeitem os filtros. A base tem 4.587 linhas por
 ano, então os filtros respondem sem novas idas ao banco.
 
-Tema e cores: .streamlit/config.toml (modo claro e escuro). As cores dos gráficos
-abaixo seguem a mesma paleta, com tons próprios para cada modo.
+Tema e cores: .streamlit/config.toml (modo claro e escuro, trocado no menu ⋮). Os
+gráficos usam só cores que funcionam nos dois modos; textos e grades seguem o tema.
 """
 import os
 import re
@@ -45,19 +45,16 @@ SQL = """
     JOIN dim_tipo_crime c USING (id_tipo_crime)
 """
 
-# ------------------------------------------------------------------ cores por modo
+# ------------------------------------------------------------------ cores
+# Valem para o modo claro e o escuro. O tema pode ser trocado no menu ⋮ sem rodar o script
+# de novo, então os gráficos não fixam cor de texto, grade nem fundo: isso fica com o tema
+# do Streamlit, aplicado no navegador. Aqui só entram cores legíveis nos dois fundos.
 # A cor segue a categoria, não a posição: não letal = azul, letal = laranja.
-# Escala sequencial de um matiz; no escuro, o "perto de zero" fica perto do fundo.
-CORES = {
-    "light": {"nao_letal": "#2a78d6", "letal": "#eb6834", "grade": "rgba(11,11,11,0.10)",
-              "texto": "#0b0b0b", "texto2": "#52514e", "fundo": "#fcfcfb",
-              "seq": ["#eef5fd", "#cde2fb", "#86b6ef", "#3987e5", "#1c5cab", "#0d366b"]},
-    "dark": {"nao_letal": "#3987e5", "letal": "#d95926", "grade": "rgba(240,239,236,0.12)",
-             "texto": "#f0efec", "texto2": "#c3c2b7", "fundo": "#1a1a19",
-             "seq": ["#202a38", "#104281", "#1c5cab", "#3987e5", "#86b6ef", "#cde2fb"]},
-}
-MODO = st.context.theme.type if st.context.theme.type in CORES else "light"
-COR = CORES[MODO]
+COR = {"nao_letal": "#3380dd", "letal": "#e2602d",
+       "neutro": "#8a8984",                         # linha da Bahia e rótulos secundários
+       # no mapa de calor a escala é opaca: com transparência, o Plotly escolhe a cor do
+       # número pela célula sem ver o fundo e escrevia preto sobre o modo escuro
+       "seq_opaca": ["#e3eefb", "#b7d3f6", "#86b6ef", "#3987e5", "#1c5cab", "#0d366b"]}
 
 # Faixas iguais às da vw_porte_municipio (sql/02_agregacoes.sql): (limite superior, rótulo)
 FAIXAS_PORTE = [(20_000, "até 20 mil hab."), (50_000, "20 a 50 mil hab."),
@@ -140,15 +137,14 @@ def layout(fig, altura: int):
     fig.update_layout(
         height=altura, margin=dict(l=8, r=56, t=8, b=8),
         separators=",.",                                   # decimal com vírgula, milhar com ponto
-        font=dict(size=13, color=COR["texto"]),
+        font=dict(size=13),
         hoverlabel=dict(font_size=13),
-        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0, title=None,
-                    font=dict(color=COR["texto2"])),
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0, title=None),
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
         bargap=0.28, barcornerradius=4)
-    fig.update_xaxes(showgrid=True, gridcolor=COR["grade"], zeroline=False, title=None,
-                     tickformat=",.0f", tickfont=dict(color=COR["texto2"], size=12))
-    fig.update_yaxes(showgrid=False, title=None, ticksuffix="  ", tickfont=dict(size=13, color=COR["texto"]))
+    fig.update_xaxes(showgrid=True, gridcolor="rgba(128,128,128,0.2)", zeroline=False, title=None,
+                     tickformat=",.0f", tickfont=dict(size=12))
+    fig.update_yaxes(showgrid=False, title=None, ticksuffix="  ", tickfont=dict(size=13))
     return fig
 
 
@@ -172,15 +168,15 @@ def barras(df: pd.DataFrame, categoria: str, valor: str, *, cor: str | None = No
                  labels=ROTULOS)
     fig.update_traces(texttemplate="%{x:,.1f}" if valor == "taxa" else "%{x:,.0f}",
                       textposition="outside", cliponaxis=False, marker_line_width=0,
-                      textfont=dict(color=COR["texto2"], size=12))
+                      textfont=dict(size=12))
     if referencia is not None:
         # com a linha da Bahia, o valor vai para dentro da barra, para a linha não cruzar o texto
         fig.update_traces(textposition="inside", insidetextanchor="end",
                           textfont=dict(color="#ffffff", size=12))
-        fig.add_vline(x=referencia, line_dash="dot", line_width=1.5, line_color=COR["texto2"],
+        fig.add_vline(x=referencia, line_dash="dot", line_width=1.5, line_color=COR["neutro"],
                       layer="below",                       # atrás das barras e dos rótulos
                       annotation_text=f"Bahia: {num(referencia, 1)}", annotation_position="top",
-                      annotation_font=dict(size=12, color=COR["texto2"]))
+                      annotation_font=dict(size=12, color=COR["neutro"]))
     fig = layout(fig, altura or max(220, 30 * len(df) + 40))
     if referencia is not None:
         fig.update_layout(margin=dict(t=28))
@@ -435,14 +431,14 @@ with aba_cruz:
     mapa = go.Figure(go.Heatmap(
         z=cor_celula.values, x=valores.columns, y=valores.index,
         customdata=np.dstack([valores.values, matriz.values]),   # [valor real, vítimas] por célula
-        colorscale=COR["seq"], zmin=0, xgap=3, ygap=3, showscale=not por_coluna,
-        colorbar=dict(thickness=10, outlinewidth=0, tickfont=dict(color=COR["texto2"])),
+        colorscale=COR["seq_opaca"], zmin=0, xgap=3, ygap=3, showscale=not por_coluna,
+        colorbar=dict(thickness=10, outlinewidth=0),
         hovertemplate="<b>%{y}</b><br>%{x}<br>%{customdata[0]:,." + str(casas) + "f}" + sufixo
                       + "<br>%{customdata[1]:,.0f} vítimas<extra></extra>"))
     mapa.update_yaxes(autorange="reversed", ticksuffix="  ")
     mapa.update_xaxes(side="top", tickangle=-35, showgrid=False)
     mapa = layout(mapa, altura=26 * len(valores) + 170)
-    mapa.update_xaxes(showgrid=False, tickfont=dict(size=12, color=COR["texto"]))
+    mapa.update_xaxes(showgrid=False, tickfont=dict(size=12))
     mapa.update_layout(margin=dict(l=8, r=8, t=150, b=8))
     grafico(mapa)
     st.caption("Linhas ordenadas pelo valor médio do território. "
