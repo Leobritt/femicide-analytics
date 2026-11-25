@@ -367,14 +367,16 @@ with aba_mun:
             posicao = int((todos["taxa"] > mun["taxa"]).sum()) + 1
             with st.container(border=True):
                 st.markdown(f"#### {escolha}")
-                st.caption(f"Território {mun['territorio']} · {num(mun['populacao'])} habitantes · "
+                st.markdown(f"Território de Identidade: **{mun['territorio']}**")
+                st.caption(f"{num(mun['populacao'])} habitantes · "
                            f"{num(mun['area_km2'], 1)} km² · {num(mun['densidade'], 1)} hab./km²")
                 c1, c2 = st.columns(2)
                 c1.metric("Vítimas", num(mun["vitimas"]))
                 c2.metric("Taxa por 100 mil hab.", num(mun["taxa"], 1),
                           delta=variacao(mun["taxa"], taxa_estado), delta_color="inverse")
                 st.caption(f"Taxa do território: {num(terr['taxa'], 1)} · Bahia: {num(taxa_estado, 1)} · "
-                           f"{posicao}º maior taxa entre os {len(todos)} municípios"
+                           f"{posicao}º maior taxa entre os {len(todos)} municípios da Bahia, "
+                           "contando os pequenos"
                            + (" · município pequeno: taxa instável" if mun["populacao"] < LIMITE_PEQUENO else ""))
             crimes_mun = (dados[dados["cod_ibge"] == mun["cod_ibge"]]
                           .groupby(["crime", "categoria"], as_index=False)["vitimas"].sum())
