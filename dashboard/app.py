@@ -439,6 +439,9 @@ with aba_cruz:
     mapa = go.Figure(go.Heatmap(
         z=cor_celula.values, x=valores.columns, y=valores.index,
         customdata=np.dstack([valores.values, matriz.values]),   # [valor real, vítimas] por célula
+        # valor escrito na célula, para ler sem o cursor (projetor, impressão)
+        text=valores.apply(lambda coluna: coluna.map(lambda v: num(v, casas))).values, texttemplate="%{text}",
+        textfont=dict(size=11),
         colorscale=COR["seq_opaca"], zmin=0, xgap=3, ygap=3, showscale=not por_coluna,
         colorbar=dict(thickness=10, outlinewidth=0),
         hovertemplate="<b>%{y}</b><br>%{x}<br>%{customdata[0]:,." + str(casas) + "f}" + sufixo
