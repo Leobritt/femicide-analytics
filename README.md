@@ -176,8 +176,8 @@ a alternativa está indicada.
 ### 5.2 Baixar o projeto e instalar as dependências
 
 ```bash
-git clone https://github.com/Leobritt/femicide-analytics-es.git
-cd femicide-analytics-es
+git clone https://github.com/Leobritt/femicide-analytics.git
+cd femicide-analytics
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
