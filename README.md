@@ -30,13 +30,18 @@ fontes citadas no rodapé do próprio arquivo são a *Área territorial brasilei
 Os demais indicadores do export (gentílico, prefeito, IDHM, PIB per capita, escolarização,
 mortalidade infantil, receitas e despesas) ficam de fora.
 
+O dashboard usa ainda a malha municipal da Bahia, baixada da [API de malhas do IBGE](https://servicodados.ibge.gov.br/api/docs/malhas?versao=3)
+em 25/11/2026 (`data/raw/IBGE_MALHA_MUNICIPIOS_BAHIA.geojson`, qualidade intermediária,
+417 municípios identificados pelo código IBGE de 7 dígitos). Ela não passa pelo ETL nem
+vai para o banco: serve só para desenhar o mapa.
+
 Os arquivos em `data/raw/` são os originais, sem nenhuma alteração. A versão tratada fica
 em `data/processed/` e é gerada pelo ETL.
 
 ## 2. Estrutura do repositório
 
 ```
-data/raw/              arquivos originais (XLSX da SSP-BA, PDF do Anexo II e CSV do IBGE)
+data/raw/              arquivos originais (XLSX da SSP-BA, PDF do Anexo II, CSV e malha do IBGE)
 data/processed/        CSVs tratados gerados pelo ETL (um por tabela do banco)
 etl/extract.py         leitura da planilha, da tabela do PDF e do CSV do IBGE, sem alterar valores
 etl/transform.py       tipagem, formato longo, vínculo município → território, validações
@@ -48,7 +53,7 @@ sql/03_validacao.sql   contagens, totais de controle, estrutura e tamanho do ban
 sql/00_limpeza_base_antiga.sql  opcional: remove as tabelas da base anterior
 logs/validacao_aiven.txt        saída de sql/03_validacao.sql no banco anterior (Aiven), 09/10/2026
 logs/correcoes_territorios.csv  correções aplicadas aos nomes do anexo (gerado pelo ETL; fora do git)
-dashboard/app.py       dashboard Streamlit (filtros, indicadores e abas por território, município e crime)
+dashboard/app.py       dashboard Streamlit (filtros, indicadores, mapa e abas por território, município e crime)
 .streamlit/config.toml tema do dashboard (cores dos modos claro e escuro)
 ```
 
@@ -307,11 +312,12 @@ streamlit run dashboard/app.py
 
 O navegador abre em http://localhost:8501. No topo ficam os filtros (ano, Territórios de
 Identidade, tipos de crime, só crimes letais) e a **Medida**, que alterna entre vítimas e
-taxa por 100 mil habitantes em toda a página. Abaixo, quatro indicadores e cinco abas:
+taxa por 100 mil habitantes em toda a página. Abaixo, quatro indicadores e seis abas:
 
 | Aba | Conteúdo |
 |---|---|
 | Visão geral | vítimas por tipo de crime, com os crimes letais num gráfico de escala própria, e os 10 territórios com mais vítimas (ou maior taxa) |
+| Mapa | mapa da Bahia colorido por território ou por município |
 | Territórios | os 26 territórios; em taxa, com a linha da média da Bahia |
 | Municípios | ranking dos 15 maiores (em taxa, sem os de menos de 20 mil hab. por padrão) e ficha de um município, com busca |
 | Cruzamentos | taxa por porte e densidade do município e mapa de calor território × crime, com o valor em cada célula |

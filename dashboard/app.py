@@ -10,6 +10,7 @@ ano, então os filtros respondem sem novas idas ao banco.
 Tema e cores: .streamlit/config.toml (modo claro e escuro, trocado no menu ⋮). Os
 gráficos usam só cores que funcionam nos dois modos; textos e grades seguem o tema.
 """
+import json
 import os
 import re
 from pathlib import Path
@@ -22,7 +23,9 @@ import psycopg2
 import streamlit as st
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+RAIZ = Path(__file__).resolve().parent.parent
+load_dotenv(RAIZ / ".env")
+MALHA = RAIZ / "data" / "raw" / "IBGE_MALHA_MUNICIPIOS_BAHIA.geojson"
 
 st.set_page_config(page_title="Violência contra a mulher — Bahia", page_icon=":material/bar_chart:",
                    layout="wide")
@@ -31,6 +34,7 @@ SQL = """
     SELECT f.ano,
            t.nome_territorio AS territorio,
            m.cod_ibge,
+           m.codigo_ibge7,
            m.nome_municipio  AS municipio,
            m.populacao_estimada_2026 AS populacao,
            m.area_km2,
@@ -52,8 +56,12 @@ SQL = """
 # A cor segue a categoria, não a posição: não letal = azul, letal = laranja.
 COR = {"nao_letal": "#3380dd", "letal": "#e2602d",
        "neutro": "#8a8984",                         # linha da Bahia e rótulos secundários
-       # no mapa de calor a escala é opaca: com transparência, o Plotly escolhe a cor do
-       # número pela célula sem ver o fundo e escrevia preto sobre o modo escuro
+       "borda": "rgba(255,255,255,0.45)",           # contorno dos municípios no mapa
+       # mapa: escala opaca que já começa num azul visível, para o estado se destacar do
+       # fundo, claro ou escuro, mesmo onde os valores são baixos
+       "seq_mapa": ["#c9ddf6", "#9ec5f4", "#6aa5ec", "#3987e5", "#1c5cab", "#0d366b"],
+       # no mapa de calor a escala também é opaca: com transparência, o Plotly escolhe a cor
+       # do número pela célula sem ver o fundo e escrevia preto sobre o modo escuro
        "seq_opaca": ["#e3eefb", "#b7d3f6", "#86b6ef", "#3987e5", "#1c5cab", "#0d366b"]}
 
 # Faixas iguais às da vw_porte_municipio (sql/02_agregacoes.sql): (limite superior, rótulo)
@@ -124,7 +132,26 @@ def carregar_base() -> pd.DataFrame:
     df["municipio"] = df["municipio"].map(nome_proprio)
     df["categoria"] = df["letal"].map({True: "Letal", False: "Não letal"})
     df["area_km2"] = df["area_km2"].astype(float)              # NUMERIC chega como Decimal
+    df["codigo_ibge7"] = df["codigo_ibge7"].astype(str)         # mesma chave do GeoJSON (codarea)
     return df
+
+
+@st.cache_data
+def carregar_malha() -> dict:
+    """Malha municipal da Bahia (API de malhas do IBGE, qualidade intermediária).
+
+    O IBGE grava os anéis no sentido anti-horário (padrão GeoJSON), mas o mapa do Plotly
+    (d3-geo) entende esse sentido como "tudo menos o polígono" e pinta o globo inteiro.
+    Os anéis são invertidos aqui; o arquivo em data/raw fica como veio da fonte.
+    """
+    malha = json.loads(MALHA.read_text(encoding="utf-8"))
+    for municipio in malha["features"]:
+        geometria = municipio["geometry"]
+        poligonos = [geometria["coordinates"]] if geometria["type"] == "Polygon" else geometria["coordinates"]
+        for poligono in poligonos:
+            for anel in poligono:
+                anel.reverse()
+    return malha
 
 
 # ------------------------------------------------------------------ gráficos
@@ -246,7 +273,8 @@ dados_estado = base_ano[filtro_crime]          # referência "Bahia" com os mesm
 
 # Uma linha por município: a população não pode ser somada a partir de `dados`, que tem
 # uma linha por município x crime e multiplicaria a população pelo nº de crimes.
-municipios = base_ano.drop_duplicates("cod_ibge")[["cod_ibge", "municipio", "territorio", "populacao", "area_km2"]]
+municipios = base_ano.drop_duplicates("cod_ibge")[["cod_ibge", "codigo_ibge7", "municipio", "territorio", "populacao",
+                                                  "area_km2"]]
 mun_sel = municipios[municipios["territorio"].isin(terr_sel or territorios)]
 pop_sel, pop_estado = int(mun_sel["populacao"].sum()), int(municipios["populacao"].sum())
 taxa_estado = taxa_100k(dados_estado["vitimas"].sum(), pop_estado)
@@ -301,8 +329,8 @@ referencia = taxa_estado if em_taxa else None
 nota_taxa = ("Taxa por 100 mil habitantes, sobre a população total (não a feminina): compara lugares "
              "entre si, mas não equivale às taxas oficiais por 100 mil mulheres.")
 
-aba_geral, aba_terr, aba_mun, aba_cruz, aba_dados = st.tabs(
-    ["Visão geral", "Territórios", "Municípios", "Cruzamentos", "Dados"])
+aba_geral, aba_mapa, aba_terr, aba_mun, aba_cruz, aba_dados = st.tabs(
+    ["Visão geral", "Mapa", "Territórios", "Municípios", "Cruzamentos", "Dados"])
 
 # ------------------------------------------------------------------ visão geral
 with aba_geral:
@@ -326,6 +354,39 @@ with aba_geral:
         grafico(barras(top, "territorio", valor, referencia=referencia, altura=420))
     if em_taxa:
         st.caption(nota_taxa)
+
+# ------------------------------------------------------------------ mapa
+with aba_mapa:
+    nivel = st.segmented_control("Colorir por", ["Território", "Município"], default="Território") or "Território"
+    titulo_secao(f"{nome_valor} por {nivel.lower()}",
+                 ("No nível de território, todos os municípios de um território recebem a mesma cor. "
+                  if nivel == "Território" else
+                  "Municípios pequenos podem ter taxas altas com um ou dois casos. " if em_taxa else "")
+                 + ("" if em_taxa else "Em contagens absolutas, os lugares mais populosos dominam; "
+                    "a taxa por 100 mil hab. compara melhor."))
+    no_mapa = por_municipio
+    if nivel == "Território":
+        no_mapa = no_mapa.merge(por_territorio[["territorio", "vitimas", "taxa"]], on="territorio",
+                                suffixes=("_municipio", ""))
+    mapa_ba = go.Figure(go.Choropleth(
+        geojson=carregar_malha(), featureidkey="properties.codarea",
+        locations=no_mapa["codigo_ibge7"], z=no_mapa[valor],
+        customdata=np.stack([no_mapa["municipio"], no_mapa["territorio"], no_mapa["vitimas"],
+                             no_mapa["taxa"]], axis=-1),
+        hovertemplate="<b>%{customdata[0]}</b><br>Território: %{customdata[1]}<br>"
+                      + ("Total do território: " if nivel == "Território" else "")
+                      + "%{customdata[2]:,.0f} vítimas · %{customdata[3]:,.1f} por 100 mil hab.<extra></extra>",
+        # sem zmin: a escala vai do menor ao maior valor exibido, para os territórios se diferenciarem
+        colorscale=COR["seq_mapa"], marker_line_width=0.4, marker_line_color=COR["borda"],
+        colorbar=dict(thickness=10, outlinewidth=0, len=0.8, tickformat=",.0f",
+                      title=None)))
+    mapa_ba.update_geos(fitbounds="locations", visible=False, bgcolor="rgba(0,0,0,0)")
+    mapa_ba.update_layout(height=640, margin=dict(l=0, r=0, t=0, b=0), separators=",.",
+                          paper_bgcolor="rgba(0,0,0,0)",
+                          hoverlabel=dict(font_size=13))
+    with st.container(border=True):      # quadro separa o mapa do fundo da página
+        grafico(mapa_ba)
+    st.caption("Malha municipal: IBGE (API de malhas). " + (nota_taxa if em_taxa else ""))
 
 # ------------------------------------------------------------------ territórios
 with aba_terr:
