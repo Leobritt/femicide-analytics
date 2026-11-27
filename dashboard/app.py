@@ -4,7 +4,7 @@ Rodar na raiz do projeto:
     streamlit run dashboard/app.py
 
 Faz uma única consulta ao banco (em cache) e agrega em pandas, inclusive as taxas por
-100 mil habitantes, para que elas respeitem os filtros. A base tem 4.587 linhas por
+100 mil habitantes ou por 100 mil mulheres, para que elas respeitem os filtros. A base tem 4.587 linhas por
 ano, então os filtros respondem sem novas idas ao banco.
 
 Tema e cores: .streamlit/config.toml (modo claro e escuro, trocado no menu ⋮). Os
@@ -38,6 +38,8 @@ SQL = """
            m.nome_municipio  AS municipio,
            m.populacao_estimada_2026 AS populacao,
            m.area_km2,
+           m.mulheres_2022 AS mulheres,
+           m.mulheres_pretas_2022 + m.mulheres_pardas_2022 AS mulheres_negras,
            c.id_tipo_crime,
            c.codigo,
            c.nome_tipo_crime AS crime,
@@ -70,8 +72,11 @@ FAIXAS_PORTE = [(20_000, "até 20 mil hab."), (50_000, "20 a 50 mil hab."),
                 (float("inf"), "mais de 500 mil hab.")]
 FAIXAS_DENSIDADE = [(10, "até 10 hab./km²"), (25, "10 a 25 hab./km²"), (50, "25 a 50 hab./km²"),
                     (100, "50 a 100 hab./km²"), (float("inf"), "mais de 100 hab./km²")]
+# Faixas iguais às da vw_faixa_mulheres_negras: % de mulheres pretas e pardas no município
+FAIXAS_NEGRAS = [(70, "menos de 70%"), (80, "70% a 80%"), (85, "80% a 85%"), (90, "85% a 90%"),
+                 (float("inf"), "90% ou mais")]
 LIMITE_PEQUENO = 20_000   # municípios menores que isso geram taxas instáveis
-MEDIDAS = ["Vítimas", "Taxa por 100 mil hab."]
+MEDIDAS = ["Vítimas", "Taxa por 100 mil hab.", "Taxa por 100 mil mulheres"]
 
 
 # ------------------------------------------------------------------ formatação
@@ -133,6 +138,8 @@ def carregar_base() -> pd.DataFrame:
     df["categoria"] = df["letal"].map({True: "Letal", False: "Não letal"})
     df["area_km2"] = df["area_km2"].astype(float)              # NUMERIC chega como Decimal
     df["codigo_ibge7"] = df["codigo_ibge7"].astype(str)         # mesma chave do GeoJSON (codarea)
+    df["pct_negras"] = 100 * df["mulheres_negras"] / df["mulheres"]
+    df["faixa_negras"] = df["pct_negras"].map(lambda v: faixa(v, FAIXAS_NEGRAS))
     return df
 
 
@@ -155,7 +162,7 @@ def carregar_malha() -> dict:
 
 
 # ------------------------------------------------------------------ gráficos
-ROTULOS = {"vitimas": "Vítimas", "taxa": "Taxa por 100 mil hab.", "populacao": "População",
+ROTULOS = {"vitimas": "Vítimas", "taxa": "Taxa", "populacao": "População", "mulheres": "Mulheres",
            "territorio": "Território", "municipio": "Município", "crime": "Tipo de crime",
            "categoria": "Categoria", "faixa": "Faixa", "municipios": "Municípios"}
 
@@ -186,7 +193,7 @@ def barras(df: pd.DataFrame, categoria: str, valor: str, *, cor: str | None = No
     if ordenar:
         df = df.sort_values(valor, ascending=False, kind="stable")
     ordem = df[categoria].tolist()
-    formato = {"taxa": ":,.1f", "vitimas": ":,.0f", "populacao": ":,.0f"}
+    formato = {"taxa": ":,.1f", "vitimas": ":,.0f", "populacao": ":,.0f", "mulheres": ":,.0f"}
     fig = px.bar(df, y=categoria, x=valor, orientation="h", color=cor,
                  color_discrete_map={"Não letal": COR["nao_letal"], "Letal": COR["letal"]},
                  color_discrete_sequence=[COR["nao_letal"]],
@@ -205,6 +212,8 @@ def barras(df: pd.DataFrame, categoria: str, valor: str, *, cor: str | None = No
                       annotation_text=f"Bahia: {num(referencia, 1)}", annotation_position="top",
                       annotation_font=dict(size=12, color=COR["neutro"]))
     fig = layout(fig, altura or max(220, 30 * len(df) + 40))
+    if df[valor].max() < 20:                               # taxas pequenas (ex.: só letais): eixo com decimal
+        fig.update_xaxes(tickformat=",.1f")
     if referencia is not None:
         fig.update_layout(margin=dict(t=28))
     if not cor:
@@ -226,8 +235,8 @@ def titulo_secao(texto: str, legenda: str | None = None):
 cab_titulo, cab_botao = st.columns([6, 1], vertical_alignment="bottom")
 cab_titulo.title("Violência contra a mulher na Bahia")
 cab_titulo.caption("Vítimas mulheres por Território de Identidade, município e tipo de crime · "
-                   "Fontes: SSP-BA (vítimas) e IBGE (população) · Dados agregados; nenhum caso "
-                   "individual é exibido.")
+                   "Fontes: SSP-BA (vítimas) e IBGE (população e Censo 2022 por cor ou raça) · "
+                   "Dados agregados; nenhum caso individual é exibido.")
 if cab_botao.button("Atualizar dados", icon=":material/refresh:", type="tertiary",
                     help="Limpa o cache. Use depois de rodar o ETL de novo."):
     st.cache_data.clear()
@@ -253,30 +262,46 @@ with st.container(border=True):
     ano = f1.selectbox("Ano", anos, index=len(anos) - 1)
     terr_sel = f2.multiselect("Territórios de Identidade", territorios, placeholder="Todos os territórios")
     crime_sel = f3.multiselect("Tipos de crime", crimes, placeholder="Todos os crimes")
-    medida = f4.segmented_control(
-        "Medida", MEDIDAS, default=MEDIDAS[0],
-        help="A taxa divide as vítimas pela população estimada pelo IBGE (referência jul/2024), "
-             "para comparar lugares de tamanhos diferentes. É sobre a população total, não a feminina.")
-    so_letais = st.toggle("Só crimes letais",
+    medida = f4.selectbox(
+        "Medida", MEDIDAS, index=0,
+        help="Por 100 mil hab.: vítimas ÷ população estimada pelo IBGE (referência jul/2024). "
+             "Por 100 mil mulheres: vítimas ÷ mulheres no Censo 2022, o denominador das taxas oficiais "
+             "de violência contra a mulher.")
+    g1, g2 = st.columns([5.5, 2.4], vertical_alignment="bottom")
+    negras_sel = g1.multiselect(
+        "Mulheres pretas e pardas no município (Censo 2022)", [r for _, r in FAIXAS_NEGRAS],
+        placeholder="Todas as faixas",
+        help="Filtra os municípios pelo percentual de mulheres pretas e pardas na população feminina. "
+             "A SSP-BA não informa a cor ou raça das vítimas: o recorte é do município, não da vítima.")
+    so_letais = g2.toggle("Só crimes letais",
                           help="Homicídio doloso, feminicídio e lesão corporal seguida de morte.")
 
-em_taxa = (medida or MEDIDAS[0]) != MEDIDAS[0]
+medida = medida or MEDIDAS[0]
+em_taxa = medida != MEDIDAS[0]
 valor = "taxa" if em_taxa else "vitimas"
-nome_valor = "Taxa por 100 mil hab." if em_taxa else "Vítimas"
+nome_valor = medida
+# denominador da taxa: população total ou feminina; a unidade acompanha nos rótulos
+DEN, UNIDADE = (("mulheres", "mulheres") if medida == MEDIDAS[2] else ("populacao", "hab."))
+POR = f"por 100 mil {UNIDADE}"
 
 base_ano = base[base["ano"] == ano]
 filtro_crime = base_ano["crime"].isin(crime_sel or crimes)
 if so_letais:
     filtro_crime &= base_ano["letal"]
-dados = base_ano[filtro_crime & base_ano["territorio"].isin(terr_sel or territorios)]
+filtro_lugar = base_ano["territorio"].isin(terr_sel or territorios)
+if negras_sel:
+    filtro_lugar &= base_ano["faixa_negras"].isin(negras_sel)
+recorte_lugar = bool(terr_sel or negras_sel)
+dados = base_ano[filtro_crime & filtro_lugar]
 dados_estado = base_ano[filtro_crime]          # referência "Bahia" com os mesmos crimes
 
 # Uma linha por município: a população não pode ser somada a partir de `dados`, que tem
 # uma linha por município x crime e multiplicaria a população pelo nº de crimes.
 municipios = base_ano.drop_duplicates("cod_ibge")[["cod_ibge", "codigo_ibge7", "municipio", "territorio", "populacao",
-                                                  "area_km2"]]
-mun_sel = municipios[municipios["territorio"].isin(terr_sel or territorios)]
-pop_sel, pop_estado = int(mun_sel["populacao"].sum()), int(municipios["populacao"].sum())
+                                                  "area_km2", "mulheres", "mulheres_negras", "pct_negras",
+                                                  "faixa_negras"]]
+mun_sel = municipios[municipios["cod_ibge"].isin(base_ano.loc[filtro_lugar, "cod_ibge"])]
+pop_sel, pop_estado = int(mun_sel[DEN].sum()), int(municipios[DEN].sum())
 taxa_estado = taxa_100k(dados_estado["vitimas"].sum(), pop_estado)
 
 # ------------------------------------------------------------------ indicadores
@@ -292,19 +317,19 @@ for coluna, (nome, recorte) in zip(st.columns(4), INDICADORES):
     t, t_estado = taxa_100k(n, pop_sel), taxa_100k(n_estado, pop_estado)
     with coluna.container(border=True):
         if selecionado.empty:
-            st.metric(f"{nome} por 100 mil hab." if em_taxa else nome, "—")
+            st.metric(f"{nome} {POR}" if em_taxa else nome, "—")
             st.caption("fora do filtro de crimes")
         elif em_taxa:
-            st.metric(f"{nome} por 100 mil hab.", num(t, 2),
-                      delta=variacao(t, t_estado) if terr_sel else None, delta_color="inverse",
-                      help="Comparação com a taxa da Bahia inteira." if terr_sel else None)
+            st.metric(f"{nome} {POR}", num(t, 2),
+                      delta=variacao(t, t_estado) if recorte_lugar else None, delta_color="inverse",
+                      help="Comparação com a taxa da Bahia inteira." if recorte_lugar else None)
             st.caption(f"{num(n)} vítimas")
         else:
             st.metric(nome, num(n))
-            st.caption(f"{num(100 * n / n_estado, 1)}% do estado" if terr_sel and n_estado
-                       else f"{num(t, 2)} por 100 mil hab.")
-st.caption(f"{ano} · {'territórios selecionados' if terr_sel else 'Bahia inteira'} · "
-           f"{num(pop_sel)} habitantes · "
+            st.caption(f"{num(100 * n / n_estado, 1)}% do estado" if recorte_lugar and n_estado
+                       else f"{num(t, 2)} {POR}")
+st.caption(f"{ano} · {'municípios selecionados' if recorte_lugar else 'Bahia inteira'} · "
+           f"{num(len(mun_sel))} municípios · {num(pop_sel)} {'mulheres (Censo 2022)' if DEN == 'mulheres' else 'habitantes'} · "
            + ("todos os tipos de crime" if not (crime_sel or so_letais)
               else "só os crimes selecionados") + ".")
 
@@ -314,20 +339,23 @@ if dados["vitimas"].sum() == 0:
 
 # agregados usados em mais de uma aba
 por_territorio = (dados.groupby("territorio", as_index=False)["vitimas"].sum()
-                  .merge(mun_sel.groupby("territorio", as_index=False)["populacao"].sum(), on="territorio"))
-por_territorio["taxa"] = taxa_100k(por_territorio["vitimas"], por_territorio["populacao"])
+                  .merge(mun_sel.groupby("territorio", as_index=False)[["populacao", "mulheres"]].sum(),
+                         on="territorio"))
+por_territorio["taxa"] = taxa_100k(por_territorio["vitimas"], por_territorio[DEN])
 
 por_crime = dados.groupby(["crime", "categoria"], as_index=False)["vitimas"].sum()
 por_crime["taxa"] = taxa_100k(por_crime["vitimas"], pop_sel)
 
 por_municipio = (dados.groupby("cod_ibge", as_index=False)["vitimas"].sum()
                  .merge(mun_sel, on="cod_ibge", how="right").fillna({"vitimas": 0}))
-por_municipio["taxa"] = taxa_100k(por_municipio["vitimas"], por_municipio["populacao"])
+por_municipio["taxa"] = taxa_100k(por_municipio["vitimas"], por_municipio[DEN])
 por_municipio["densidade"] = por_municipio["populacao"] / por_municipio["area_km2"]
 
 referencia = taxa_estado if em_taxa else None
-nota_taxa = ("Taxa por 100 mil habitantes, sobre a população total (não a feminina): compara lugares "
-             "entre si, mas não equivale às taxas oficiais por 100 mil mulheres.")
+nota_taxa = ("Taxa por 100 mil mulheres, com a população feminina do Censo 2022 como denominador."
+             if DEN == "mulheres" else
+             "Taxa por 100 mil habitantes, sobre a população total (não a feminina): compara lugares "
+             "entre si; para o recorte de gênero, use a medida por 100 mil mulheres.")
 
 aba_geral, aba_mapa, aba_terr, aba_mun, aba_cruz, aba_dados = st.tabs(
     ["Visão geral", "Mapa", "Territórios", "Municípios", "Cruzamentos", "Dados"])
@@ -363,7 +391,7 @@ with aba_mapa:
                   if nivel == "Território" else
                   "Municípios pequenos podem ter taxas altas com um ou dois casos. " if em_taxa else "")
                  + ("" if em_taxa else "Em contagens absolutas, os lugares mais populosos dominam; "
-                    "a taxa por 100 mil hab. compara melhor."))
+                    "as taxas comparam melhor."))
     no_mapa = por_municipio
     if nivel == "Território":
         no_mapa = no_mapa.merge(por_territorio[["territorio", "vitimas", "taxa"]], on="territorio",
@@ -375,7 +403,7 @@ with aba_mapa:
                              no_mapa["taxa"]], axis=-1),
         hovertemplate="<b>%{customdata[0]}</b><br>Território: %{customdata[1]}<br>"
                       + ("Total do território: " if nivel == "Território" else "")
-                      + "%{customdata[2]:,.0f} vítimas · %{customdata[3]:,.1f} por 100 mil hab.<extra></extra>",
+                      + "%{customdata[2]:,.0f} vítimas · %{customdata[3]:,.1f} " + POR + "<extra></extra>",
         # sem zmin: a escala vai do menor ao maior valor exibido, para os territórios se diferenciarem
         colorscale=COR["seq_mapa"], marker_line_width=0.4, marker_line_color=COR["borda"],
         colorbar=dict(thickness=10, outlinewidth=0, len=0.8, tickformat=",.0f",
@@ -391,8 +419,8 @@ with aba_mapa:
 # ------------------------------------------------------------------ territórios
 with aba_terr:
     titulo_secao(f"{nome_valor} por Território de Identidade",
-                 "Contagens absolutas: territórios mais populosos tendem a liderar. Use a medida "
-                 "“Taxa por 100 mil hab.” para comparar territórios de tamanhos diferentes."
+                 "Contagens absolutas: territórios mais populosos tendem a liderar. Use uma das taxas "
+                 "para comparar territórios de tamanhos diferentes."
                  if not em_taxa else nota_taxa + " A linha pontilhada é a taxa da Bahia.")
     grafico(barras(por_territorio, "territorio", valor, referencia=referencia))
 
@@ -423,17 +451,18 @@ with aba_mun:
             terr = por_territorio[por_territorio["territorio"] == mun["territorio"]].iloc[0]
             # posição na Bahia inteira, com os mesmos filtros de crime
             todos = (dados_estado.groupby("cod_ibge")["vitimas"].sum()
-                     .to_frame().join(municipios.set_index("cod_ibge")["populacao"]))
-            todos["taxa"] = taxa_100k(todos["vitimas"], todos["populacao"])
+                     .to_frame().join(municipios.set_index("cod_ibge")[DEN]))
+            todos["taxa"] = taxa_100k(todos["vitimas"], todos[DEN])
             posicao = int((todos["taxa"] > mun["taxa"]).sum()) + 1
             with st.container(border=True):
                 st.markdown(f"#### {escolha}")
                 st.markdown(f"Território de Identidade: **{mun['territorio']}**")
                 st.caption(f"{num(mun['populacao'])} habitantes · "
-                           f"{num(mun['area_km2'], 1)} km² · {num(mun['densidade'], 1)} hab./km²")
+                           f"{num(mun['area_km2'], 1)} km² · {num(mun['densidade'], 1)} hab./km² · "
+                           f"{num(mun['pct_negras'], 1)}% das mulheres são pretas ou pardas")
                 c1, c2 = st.columns(2)
                 c1.metric("Vítimas", num(mun["vitimas"]))
-                c2.metric("Taxa por 100 mil hab.", num(mun["taxa"], 1),
+                c2.metric(f"Taxa {POR}", num(mun["taxa"], 1),
                           delta=variacao(mun["taxa"], taxa_estado), delta_color="inverse")
                 st.caption(f"Taxa do território: {num(terr['taxa'], 1)} · Bahia: {num(taxa_estado, 1)} · "
                            f"{posicao}º maior taxa entre os {len(todos)} municípios da Bahia, "
@@ -441,7 +470,7 @@ with aba_mun:
                            + (" · município pequeno: taxa instável" if mun["populacao"] < LIMITE_PEQUENO else ""))
             crimes_mun = (dados[dados["cod_ibge"] == mun["cod_ibge"]]
                           .groupby(["crime", "categoria"], as_index=False)["vitimas"].sum())
-            crimes_mun["taxa"] = taxa_100k(crimes_mun["vitimas"], mun["populacao"])
+            crimes_mun["taxa"] = taxa_100k(crimes_mun["vitimas"], mun[DEN])
             crimes_mun = crimes_mun[crimes_mun["vitimas"] > 0]
             if len(crimes_mun):
                 grafico(barras(crimes_mun, "crime", valor, cor="categoria"))
@@ -449,7 +478,7 @@ with aba_mun:
 # ------------------------------------------------------------------ cruzamentos
 with aba_cruz:
     titulo_secao("Taxa por porte e densidade do município",
-                 "Vítimas por 100 mil habitantes, somando todos os municípios de cada faixa. Faixas "
+                 f"Vítimas {POR}, somando todos os municípios de cada faixa. Faixas "
                  "de porte do IBGE; a densidade (hab./km²) indica, de forma aproximada, quão urbano "
                  "é o município.")
     p1, p2 = st.columns(2, gap="large")
@@ -458,23 +487,54 @@ with aba_cruz:
         grupo = por_municipio.assign(faixa=por_municipio[campo].map(lambda v: faixa(v, faixas)))
         grupo = (grupo.groupby("faixa", as_index=False)
                  .agg(vitimas=("vitimas", "sum"), populacao=("populacao", "sum"),
-                      municipios=("cod_ibge", "count")))
+                      mulheres=("mulheres", "sum"), municipios=("cod_ibge", "count")))
         ordem = [r for _, r in faixas if r in set(grupo["faixa"])]
         grupo = grupo.set_index("faixa").loc[ordem].reset_index()
-        grupo["taxa"] = taxa_100k(grupo["vitimas"], grupo["populacao"])
+        grupo["taxa"] = taxa_100k(grupo["vitimas"], grupo[DEN])
         with coluna:
             st.caption(titulo)
             grafico(barras(grupo, "faixa", "taxa", ordenar=False, referencia=taxa_estado))
 
     st.divider()
+    # Recorte de gênero x raça (ODS 5 e 18). Sempre por 100 mil MULHERES: o grupo comparado é
+    # a população feminina de cada faixa, qualquer que seja a medida escolhida acima.
+    titulo_secao("Taxa por % de mulheres pretas e pardas no município",
+                 "Vítimas por 100 mil mulheres (Censo 2022), somando os municípios de cada faixa. "
+                 "A SSP-BA não informa a cor ou raça das vítimas: o gráfico compara municípios com "
+                 "composições raciais diferentes, não diz a cor de quem foi vítima. Ligue “Só crimes "
+                 "letais” para ver a violência letal.")
+    pct_estado = 100 * municipios["mulheres_negras"].sum() / municipios["mulheres"].sum()
+    raca = (por_municipio.groupby("faixa_negras", as_index=False)
+            .agg(vitimas=("vitimas", "sum"), mulheres=("mulheres", "sum"), municipios=("cod_ibge", "count"))
+            .rename(columns={"faixa_negras": "faixa"}))
+    ordem = [r for _, r in FAIXAS_NEGRAS if r in set(raca["faixa"])]
+    raca = raca.set_index("faixa").loc[ordem].reset_index()
+    raca["taxa"] = taxa_100k(raca["vitimas"], raca["mulheres"])
+    taxa_estado_mulheres = taxa_100k(dados_estado["vitimas"].sum(), municipios["mulheres"].sum())
+    r1, r2 = st.columns([1.6, 1], gap="large")
+    with r1:
+        grafico(barras(raca, "faixa", "taxa", ordenar=False, referencia=taxa_estado_mulheres))
+    with r2:
+        st.metric("Mulheres pretas e pardas na Bahia", f"{num(pct_estado, 1)}%",
+                  help="Pretas + pardas = população negra, pela convenção do IBGE. Censo 2022.")
+        maior, menor = raca.iloc[-1], raca.iloc[0]
+        if len(raca) > 1 and menor["taxa"]:
+            st.metric(f"Faixa “{maior['faixa']}” vs. “{menor['faixa']}”",
+                      f"{num(maior['taxa'] / menor['taxa'], 2)}×",
+                      help="Razão entre as taxas por 100 mil mulheres da faixa com mais e da faixa com "
+                           "menos mulheres pretas e pardas, com os filtros atuais.")
+        st.caption(f"{'Só crimes letais. ' if so_letais else ''}Faixas com poucos municípios ou poucos "
+                   "casos geram taxas instáveis.")
+
+    st.divider()
     titulo_secao("Território × tipo de crime")
-    MODOS = {"Taxa por 100 mil hab.": "taxa",
+    MODOS = {f"Taxa {POR}": "taxa",
              "Composição do território": "pct_territorio",
              "Participação no crime": "pct_crime",
              "Vítimas": "vitimas"}
     h1, h2 = st.columns([3, 1.3], vertical_alignment="bottom")
-    modo = MODOS[h1.segmented_control("Cor das células", list(MODOS), default="Taxa por 100 mil hab.")
-                 or "Taxa por 100 mil hab."]
+    modo = MODOS[h1.segmented_control("Cor das células", list(MODOS), default=f"Taxa {POR}")
+                 or f"Taxa {POR}"]
     por_coluna = h2.toggle("Escala própria por crime", value=True,
                            help="Cada coluna usa a própria escala, para mostrar a variação entre "
                                 "territórios mesmo em crimes raros. O valor real aparece no cursor.")
@@ -482,10 +542,10 @@ with aba_cruz:
     matriz = (dados.pivot_table(index="territorio", columns="crime", values="vitimas",
                                 aggfunc="sum", fill_value=0)
               .reindex(columns=[c for c in crimes if c in dados["crime"].unique()]))
-    pop_terr = mun_sel.groupby("territorio")["populacao"].sum().reindex(matriz.index)
+    pop_terr = mun_sel.groupby("territorio")[DEN].sum().reindex(matriz.index)
     if modo == "taxa":
         valores = taxa_100k(matriz, pop_terr.values[:, None])
-        sufixo, casas = " por 100 mil hab.", 1
+        sufixo, casas = f" {POR}", 1
     elif modo == "pct_territorio":
         valores = 100 * matriz.div(matriz.sum(axis=1).replace(0, float("nan")), axis=0)
         sufixo, casas = "% das vítimas do território", 1
@@ -530,7 +590,7 @@ with aba_dados:
                   feminicidios=por_municipio["cod_ibge"].map(
                   dados[dados["codigo"] == "feminicidio"].groupby("cod_ibge")["vitimas"].sum()).fillna(0))
               [["cod_ibge", "municipio", "territorio", "populacao", "area_km2", "densidade",
-                "vitimas", "letais", "feminicidios", "taxa"]]
+                "mulheres", "pct_negras", "vitimas", "letais", "feminicidios", "taxa"]]
               .sort_values("vitimas", ascending=False, kind="stable"))
     st.dataframe(
         tabela, hide_index=True, width="stretch", height=420,
@@ -543,7 +603,9 @@ with aba_dados:
             "vitimas": st.column_config.NumberColumn("Vítimas", format="localized"),
             "letais": st.column_config.NumberColumn("Crimes letais", format="%d"),
             "feminicidios": st.column_config.NumberColumn("Feminicídios", format="%d"),
-            "taxa": st.column_config.NumberColumn("Taxa por 100 mil hab.", format="%.1f"),
+            "mulheres": st.column_config.NumberColumn("Mulheres (Censo 2022)", format="localized"),
+            "pct_negras": st.column_config.NumberColumn("% mulheres pretas e pardas", format="%.1f"),
+            "taxa": st.column_config.NumberColumn(f"Taxa {POR}", format="%.1f"),
         })
     st.download_button(
         "Baixar CSV", icon=":material/download:",
