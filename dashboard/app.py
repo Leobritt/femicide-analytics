@@ -125,7 +125,7 @@ def variacao(valor: float, referencia: float) -> str | None:
 @st.cache_data(ttl=3600)
 def carregar_base() -> pd.DataFrame:
     """Uma conexão e uma consulta; o resultado fica em cache por 1 hora."""
-    with psycopg2.connect(os.environ["DATABASE_URL"]) as conn:
+    with psycopg2.connect(os.environ["DATABASE_URL"], connect_timeout=15) as conn:
         with conn.cursor() as cur:
             cur.execute(SQL)
             colunas = [d[0] for d in cur.description]
