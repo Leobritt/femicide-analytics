@@ -10,6 +10,8 @@ Alinhamento: **ODS 5** (igualdade de gênero), com vítimas mulheres e taxas por
 mulheres, e **ODS 18** (igualdade étnico-racial), com o recorte por percentual de mulheres
 pretas e pardas em cada município.
 
+**Dashboard online:** https://femicide-analytics-bahia.streamlit.app/
+
 Equipe: Leonardo Britto, Gustavo Castelluccio, Filipe Miranda e Henrique Viana.
 
 ## Arquitetura
@@ -540,7 +542,8 @@ no canto superior direito.
    que tem acesso ao repositório.
 2. **Create app** → **Deploy a public app from GitHub**: repositório
    `Leobritt/femicide-analytics`, branch `main`, arquivo `dashboard/app.py`.
-3. Em **Advanced settings**, escolher Python 3.10 e colar em **Secrets**:
+3. Em **Advanced settings**, escolher Python 3.12 (o `psycopg2-binary` 2.9.10 não tem
+   versão para o 3.14, que vem selecionado por padrão) e colar em **Secrets**:
 
    ```toml
    DATABASE_URL = "postgres://USUARIO:SENHA@db.filipe-oliveira.cloud:5432/defaultdb?sslmode=require"
@@ -550,6 +553,8 @@ no canto superior direito.
    `app.py` lê a URL do mesmo jeito que lê o `.env` local.
 4. **Deploy**. As dependências saem do `requirements.txt`, e o tema, do
    `.streamlit/config.toml`.
+
+A versão publicada está em https://femicide-analytics-bahia.streamlit.app/.
 
 O banco precisa aceitar conexões vindas da internet, como já acontece com o da VM. O banco
 local criado pelo Terraform, em `127.0.0.1`, não serve para o dashboard online.
