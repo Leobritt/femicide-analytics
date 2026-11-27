@@ -1,0 +1,43 @@
+# Pipeline em lote: valida o ETL a cada mudança e roda de novo uma vez por mês.
+# A carga no banco só acontece se o secret DATABASE_URL estiver configurado no repositório
+# (Settings → Secrets and variables → Actions); sem ele, o workflow só valida o tratamento.
+name: ETL
+
+on:
+  push:
+    branches: [main]
+    paths: ["etl/**", "sql/**", "data/raw/**", "requirements.txt", ".github/workflows/etl.yml"]
+  schedule:
+    - cron: "0 9 1 * *"          # dia 1 de cada mês, 6h em Brasília
+  workflow_dispatch:
+
+jobs:
+  etl:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Tratar os dados sem banco (validações do transform)
+        run: python -m etl.run_etl --dry-run
+
+      - name: Carregar no banco
+        if: env.DATABASE_URL != ''
+        run: python -m etl.run_etl
+
+      - name: Guardar os CSVs tratados e o log de correções
+        uses: actions/upload-artifact@v4
+        with:
+          name: dados-tratados
+          path: |
+            data/processed/
+            logs/correcoes_territorios.csv
