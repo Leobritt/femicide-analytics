@@ -50,6 +50,15 @@ SELECT (SELECT SUM(qtd_vitimas)   FROM fato_vitimas)                            
        (SELECT COUNT(*)           FROM vw_municipio_taxa)                             AS municipios,
        (SELECT SUM(populacao)     FROM vw_territorio_taxa)                            AS populacao;
 
+-- 4d. Recorte de gênero e raça: mulheres do Censo 2022 (esperado: 7.305.940, 79,4% pretas
+--     e pardas) e a visão por faixa somando as 118.380 vítimas e os 417 municípios
+SELECT SUM(mulheres_2022) AS mulheres_2022,
+       ROUND(100.0 * SUM(mulheres_pretas_2022 + mulheres_pardas_2022) / SUM(mulheres_2022), 1) AS pct_negras
+FROM dim_municipio;
+SELECT ordem_faixa, faixa, municipios, mulheres, total_vitimas, vitimas_crimes_letais,
+       taxa_vitimas_100k_mulheres, taxa_letais_100k_mulheres
+FROM vw_faixa_mulheres_negras ORDER BY ano, ordem_faixa;
+
 -- 5. Proporção de células com zero (a fonte não distingue "nenhum caso" de "sem registro")
 SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE qtd_vitimas = 0) / COUNT(*), 1) AS pct_zeros FROM fato_vitimas;
 

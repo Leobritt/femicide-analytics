@@ -82,7 +82,14 @@ SELECT v.ano, m.cod_ibge, m.nome_municipio, t.id_territorio, t.nome_territorio,
        v.total_vitimas::INT, v.vitimas_crimes_letais::INT, v.feminicidios::INT,
        ROUND(100000.0 * v.total_vitimas         / m.populacao_estimada_2026, 2) AS taxa_vitimas_100k,
        ROUND(100000.0 * v.vitimas_crimes_letais / m.populacao_estimada_2026, 2) AS taxa_letais_100k,
-       ROUND(100000.0 * v.feminicidios          / m.populacao_estimada_2026, 2) AS taxa_feminicidios_100k
+       ROUND(100000.0 * v.feminicidios          / m.populacao_estimada_2026, 2) AS taxa_feminicidios_100k,
+       -- recorte de gênero e raça (Censo 2022): denominador feminino e % de mulheres negras
+       m.mulheres_2022                                                 AS mulheres,
+       (m.mulheres_pretas_2022 + m.mulheres_pardas_2022)               AS mulheres_negras,
+       ROUND(100.0 * (m.mulheres_pretas_2022 + m.mulheres_pardas_2022) / m.mulheres_2022, 2) AS pct_mulheres_negras,
+       ROUND(100000.0 * v.total_vitimas         / m.mulheres_2022, 2) AS taxa_vitimas_100k_mulheres,
+       ROUND(100000.0 * v.vitimas_crimes_letais / m.mulheres_2022, 2) AS taxa_letais_100k_mulheres,
+       ROUND(100000.0 * v.feminicidios          / m.mulheres_2022, 2) AS taxa_feminicidios_100k_mulheres
 FROM v
 JOIN dim_municipio  m USING (cod_ibge)
 JOIN dim_territorio t USING (id_territorio);
@@ -99,7 +106,12 @@ SELECT ano, id_territorio, nome_territorio,
        SUM(feminicidios)::INT                                       AS feminicidios,
        ROUND(100000.0 * SUM(total_vitimas)         / SUM(populacao), 2) AS taxa_vitimas_100k,
        ROUND(100000.0 * SUM(vitimas_crimes_letais) / SUM(populacao), 2) AS taxa_letais_100k,
-       ROUND(100000.0 * SUM(feminicidios)          / SUM(populacao), 2) AS taxa_feminicidios_100k
+       ROUND(100000.0 * SUM(feminicidios)          / SUM(populacao), 2) AS taxa_feminicidios_100k,
+       SUM(mulheres)::INT                                           AS mulheres,
+       ROUND(100.0 * SUM(mulheres_negras) / SUM(mulheres), 2)       AS pct_mulheres_negras,
+       ROUND(100000.0 * SUM(total_vitimas)         / SUM(mulheres), 2) AS taxa_vitimas_100k_mulheres,
+       ROUND(100000.0 * SUM(vitimas_crimes_letais) / SUM(mulheres), 2) AS taxa_letais_100k_mulheres,
+       ROUND(100000.0 * SUM(feminicidios)          / SUM(mulheres), 2) AS taxa_feminicidios_100k_mulheres
 FROM vw_municipio_taxa
 GROUP BY ano, id_territorio, nome_territorio;
 
@@ -151,3 +163,38 @@ SELECT ano, dimensao, ordem_faixa, faixa,
        ROUND(100000.0 * SUM(feminicidios)          / SUM(populacao), 2) AS taxa_feminicidios_100k
 FROM faixas
 GROUP BY ano, dimensao, ordem_faixa, faixa;
+
+-- =====================================================================
+-- Recorte de gênero x raça/cor (ODS 5 e 18)
+--
+-- A planilha da SSP-BA não informa a cor ou raça das vítimas. O cruzamento é
+-- feito no nível do município: cada município entra na faixa do seu percentual
+-- de mulheres pretas e pardas (Censo 2022) e a taxa da faixa usa a população
+-- FEMININA como denominador. É uma análise ecológica: mostra como a violência
+-- registrada varia entre municípios com composições raciais diferentes, não a
+-- cor ou raça de quem foi vítima.
+-- =====================================================================
+CREATE OR REPLACE VIEW vw_faixa_mulheres_negras AS
+WITH faixas AS (
+    SELECT mt.*,
+           CASE WHEN pct_mulheres_negras < 70 THEN 1 WHEN pct_mulheres_negras < 80 THEN 2
+                WHEN pct_mulheres_negras < 85 THEN 3 WHEN pct_mulheres_negras < 90 THEN 4 ELSE 5 END AS ordem_faixa,
+           CASE WHEN pct_mulheres_negras < 70 THEN 'menos de 70%'
+                WHEN pct_mulheres_negras < 80 THEN '70% a 80%'
+                WHEN pct_mulheres_negras < 85 THEN '80% a 85%'
+                WHEN pct_mulheres_negras < 90 THEN '85% a 90%'
+                ELSE '90% ou mais' END                                                           AS faixa
+    FROM vw_municipio_taxa mt
+)
+SELECT ano, ordem_faixa, faixa,
+       COUNT(*)::INT                                                AS municipios,
+       SUM(mulheres)::INT                                           AS mulheres,
+       ROUND(100.0 * SUM(mulheres_negras) / SUM(mulheres), 2)       AS pct_mulheres_negras,
+       SUM(total_vitimas)::INT                                      AS total_vitimas,
+       SUM(vitimas_crimes_letais)::INT                              AS vitimas_crimes_letais,
+       SUM(feminicidios)::INT                                       AS feminicidios,
+       ROUND(100000.0 * SUM(total_vitimas)         / SUM(mulheres), 2) AS taxa_vitimas_100k_mulheres,
+       ROUND(100000.0 * SUM(vitimas_crimes_letais) / SUM(mulheres), 2) AS taxa_letais_100k_mulheres,
+       ROUND(100000.0 * SUM(feminicidios)          / SUM(mulheres), 2) AS taxa_feminicidios_100k_mulheres
+FROM faixas
+GROUP BY ano, ordem_faixa, faixa;
