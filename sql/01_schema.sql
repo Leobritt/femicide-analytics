@@ -41,7 +41,14 @@ ALTER TABLE dim_municipio
                              CHECK (codigo_ibge7 BETWEEN 2900000 AND 2999999 AND codigo_ibge7 / 10 = cod_ibge),
     ADD COLUMN IF NOT EXISTS area_km2                NUMERIC(10,3) CHECK (area_km2 > 0),
     ADD COLUMN IF NOT EXISTS populacao_censo_2022    INTEGER       CHECK (populacao_censo_2022 > 0),
-    ADD COLUMN IF NOT EXISTS populacao_estimada_2026 INTEGER       CHECK (populacao_estimada_2026 > 0);
+    ADD COLUMN IF NOT EXISTS populacao_estimada_2026 INTEGER       CHECK (populacao_estimada_2026 > 0),
+    -- Censo 2022, tabela 9606: mulheres residentes por cor ou raça
+    ADD COLUMN IF NOT EXISTS mulheres_2022           INTEGER       CHECK (mulheres_2022 > 0),
+    ADD COLUMN IF NOT EXISTS mulheres_brancas_2022   INTEGER       CHECK (mulheres_brancas_2022 >= 0),
+    ADD COLUMN IF NOT EXISTS mulheres_pretas_2022    INTEGER       CHECK (mulheres_pretas_2022 >= 0),
+    ADD COLUMN IF NOT EXISTS mulheres_pardas_2022    INTEGER       CHECK (mulheres_pardas_2022 >= 0),
+    ADD COLUMN IF NOT EXISTS mulheres_amarelas_2022  INTEGER       CHECK (mulheres_amarelas_2022 >= 0),
+    ADD COLUMN IF NOT EXISTS mulheres_indigenas_2022 INTEGER       CHECK (mulheres_indigenas_2022 >= 0);
 
 CREATE INDEX IF NOT EXISTS idx_municipio_territorio ON dim_municipio (id_territorio);
 CREATE INDEX IF NOT EXISTS idx_fato_tipo_crime      ON fato_vitimas (id_tipo_crime);
@@ -52,5 +59,8 @@ COMMENT ON COLUMN dim_municipio.codigo_ibge7            IS 'Código IBGE com dí
 COMMENT ON COLUMN dim_municipio.area_km2                IS 'Área territorial em km² (IBGE Cidades, referência 2025).';
 COMMENT ON COLUMN dim_municipio.populacao_censo_2022    IS 'População residente no Censo 2022 (IBGE).';
 COMMENT ON COLUMN dim_municipio.populacao_estimada_2026 IS 'População estimada (IBGE Cidades, rótulo 2026).';
+COMMENT ON COLUMN dim_municipio.mulheres_2022          IS 'Mulheres residentes no Censo 2022 (IBGE, tabela 9606), todas as cores ou raças e sem declaração.';
+COMMENT ON COLUMN dim_municipio.mulheres_pretas_2022   IS 'Mulheres de cor ou raça preta no Censo 2022. Pretas + pardas = população negra (convenção do IBGE).';
+COMMENT ON COLUMN dim_municipio.mulheres_pardas_2022   IS 'Mulheres de cor ou raça parda no Censo 2022.';
 COMMENT ON TABLE dim_tipo_crime IS 'Tipos de crime publicados pela SSP-BA. Estupro inclui estupro de vulnerável.';
 COMMENT ON TABLE fato_vitimas   IS 'Quantidade de vítimas mulheres por ano, município e tipo de crime (SSP-BA).';

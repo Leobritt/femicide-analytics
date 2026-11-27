@@ -3,7 +3,8 @@
 Saída (modelo estrela):
     territorios   id_territorio, nome_territorio
     municipios    cod_ibge, nome_municipio, id_territorio, codigo_ibge7, area_km2,
-                  populacao_censo_2022, populacao_estimada_2026
+                  populacao_censo_2022, populacao_estimada_2026,
+                  mulheres_2022 e mulheres de cada cor ou raça (Censo 2022)
     tipos_crime   id_tipo_crime, codigo, nome_tipo_crime, letal
     vitimas       ano, cod_ibge, id_tipo_crime, qtd_vitimas
 
@@ -39,6 +40,17 @@ CORRECOES_ANEXO = {
 # O join é pelo código; esta lista só libera a conferência de nomes. (nome SSP-BA, nome IBGE)
 GRAFIAS_SSP_IBGE = {
     ("Santa Teresinha", "Santa Terezinha"),
+}
+
+# Categorias de cor ou raça do Censo 2022 (tabela 9606, só mulheres) -> colunas do banco.
+# A diferença entre o total e a soma das cinco categorias são as pessoas sem declaração.
+COLUNAS_COR_RACA = {
+    "Total": "mulheres_2022",
+    "Branca": "mulheres_brancas_2022",
+    "Preta": "mulheres_pretas_2022",
+    "Parda": "mulheres_pardas_2022",
+    "Amarela": "mulheres_amarelas_2022",
+    "Indígena": "mulheres_indigenas_2022",
 }
 
 
@@ -158,6 +170,33 @@ def _com_ibge(dim: pd.DataFrame, bruto: pd.DataFrame) -> pd.DataFrame:
     return juntos[["cod_ibge", "nome_municipio", "id_territorio", "codigo_ibge7", *numericas]]
 
 
+def _com_cor_raca(dim: pd.DataFrame, bruto: pd.DataFrame) -> pd.DataFrame:
+    """Acrescenta a população feminina por cor ou raça (Censo 2022) à dimensão de municípios.
+
+    O join é pelo código de 7 dígitos, que os dois arquivos do IBGE usam. Na tabela do
+    IBGE, '-' significa zero absoluto (não é dado faltante), então vira 0; qualquer outro
+    valor que não seja número interrompe o pipeline.
+    """
+    texto = bruto[list(COLUNAS_COR_RACA)].astype(str).apply(lambda c: c.str.strip())
+    _exigir(texto.apply(lambda c: c.str.fullmatch(r"\d+|-")).all().all(),
+            "valor fora do padrão (número ou '-') na tabela de cor ou raça")
+    cor_raca = texto.replace("-", "0").astype(int).rename(columns=COLUNAS_COR_RACA)
+    cor_raca.insert(0, "codigo_ibge7", pd.to_numeric(bruto["codigo_ibge7"], errors="coerce").astype("Int64"))
+    _exigir(cor_raca["codigo_ibge7"].notna().all() and cor_raca["codigo_ibge7"].is_unique,
+            "código IBGE vazio ou repetido na tabela de cor ou raça")
+    _exigir((cor_raca["mulheres_2022"] > 0).all(), "município sem população feminina no Censo 2022")
+    partes = [c for c in COLUNAS_COR_RACA.values() if c != "mulheres_2022"]
+    _exigir((cor_raca[partes].sum(axis=1) <= cor_raca["mulheres_2022"]).all(),
+            "soma das categorias de cor ou raça maior que o total de mulheres")
+
+    juntos = dim.merge(cor_raca.astype({"codigo_ibge7": int}), on="codigo_ibge7", how="outer", indicator=True)
+    sem_par = juntos[juntos["_merge"] != "both"]["codigo_ibge7"].tolist()
+    _exigir(not sem_par, f"municípios sem par entre IBGE Cidades e Censo por cor ou raça: {sem_par}")
+    _exigir((juntos["mulheres_2022"] <= juntos["populacao_censo_2022"]).all(),
+            "mais mulheres do que habitantes no Censo 2022")
+    return juntos.drop(columns="_merge")[[*dim.columns, *COLUNAS_COR_RACA.values()]]
+
+
 def _tipos_crime(colunas: list[str]) -> pd.DataFrame:
     return pd.DataFrame({
         "id_tipo_crime": range(1, len(colunas) + 1),   # ordem das colunas na planilha
@@ -190,10 +229,11 @@ def _vitimas(bruto: pd.DataFrame, tipos: pd.DataFrame, totais: pd.Series, ano: i
 # ---------------------------------------------------------------- pipeline
 def transformar(vitimas_bruto: pd.DataFrame, totais: pd.Series, ano: int,
                 territorios_bruto: pd.DataFrame,
-                ibge_bruto: pd.DataFrame) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
+                ibge_bruto: pd.DataFrame,
+                cor_raca_bruto: pd.DataFrame) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
     """Retorna ({nome_tabela: DataFrame}, correções aplicadas ao anexo)."""
     territorios, vinculo, correcoes = _territorios(territorios_bruto)
-    municipios = _com_ibge(_municipios(vitimas_bruto, vinculo), ibge_bruto)
+    municipios = _com_cor_raca(_com_ibge(_municipios(vitimas_bruto, vinculo), ibge_bruto), cor_raca_bruto)
     tipos = _tipos_crime([c for c in vitimas_bruto.columns if c not in ("ID", "MUNICÍPIO")])
     vitimas = _vitimas(vitimas_bruto, tipos, totais, ano)
 
@@ -202,7 +242,8 @@ def transformar(vitimas_bruto: pd.DataFrame, totais: pd.Series, ano: int,
     print(f"[transform] {len(territorios)} territórios | {len(municipios)} municípios | "
           f"{len(tipos)} tipos de crime | {len(vitimas)} linhas no fato | "
           f"{int(vitimas['qtd_vitimas'].sum())} vítimas | {len(correcoes)} correções no anexo | "
-          f"população estimada 2026: {int(municipios['populacao_estimada_2026'].sum())}")
+          f"população estimada 2026: {int(municipios['populacao_estimada_2026'].sum())} | "
+          f"mulheres (Censo 2022): {int(municipios['mulheres_2022'].sum())}")
     tabelas = {"territorios": territorios, "municipios": municipios,
                "tipos_crime": tipos, "vitimas": vitimas}
     return tabelas, correcoes

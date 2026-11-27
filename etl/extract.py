@@ -3,12 +3,14 @@
 - Planilha XLSX da SSP-BA: vítimas por município e tipo de crime.
 - PDF do Anexo II: Territórios de Identidade e seus municípios.
 - CSV do IBGE Cidades: população e área territorial de cada município.
+- JSON da API de agregados do IBGE (Censo 2022): mulheres residentes por cor ou raça.
 
 Limpeza e conversão de tipos acontecem só no transform.
 """
 import csv
 import html
 import io
+import json
 import re
 import zipfile
 from pathlib import Path
@@ -117,3 +119,38 @@ def extrair_ibge(caminho: str | Path) -> pd.DataFrame:
     ibge = pd.DataFrame(registros, columns=nomes)
     print(f"[extract] {caminho.name}: {len(ibge)} municípios (IBGE Cidades)")
     return ibge
+
+
+# Tabela 9606 do Censo 2022 (API de agregados do IBGE), já filtrada na consulta para
+# sexo = Mulheres e idade = Total. Uma categoria de cor ou raça por resultado.
+CATEGORIAS_COR_RACA = ["Total", "Branca", "Preta", "Parda", "Amarela", "Indígena"]
+
+
+def extrair_cor_raca(caminho: str | Path) -> pd.DataFrame:
+    """Retorna uma linha por município com a população feminina de cada cor ou raça (texto original).
+
+    O JSON tem o formato da API de agregados: [variável] -> resultados (um por combinação de
+    categorias) -> séries (uma por município). O IBGE usa '-' para zero; a conversão fica no
+    transform. A consulta precisa ter sido feita só para mulheres e todas as idades.
+    """
+    caminho = Path(caminho)
+    dados = json.loads(caminho.read_text(encoding="utf-8"))
+    if len(dados) != 1 or str(dados[0]["id"]) != "93":
+        raise ValueError("JSON do IBGE: esperada só a variável 93 (população residente)")
+
+    linhas: dict[str, dict[str, str]] = {}
+    for resultado in dados[0]["resultados"]:
+        classes = {c["id"]: next(iter(c["categoria"].values())) for c in resultado["classificacoes"]}
+        if classes.get("2") != "Mulheres" or classes.get("287") != "Total":
+            raise ValueError(f"JSON do IBGE: recorte inesperado (sexo/idade): {classes}")
+        categoria = classes["86"]
+        for serie in resultado["series"]:
+            codigo = serie["localidade"]["id"]
+            linhas.setdefault(codigo, {"codigo_ibge7": codigo})[categoria] = serie["serie"]["2022"]
+
+    cor_raca = pd.DataFrame(list(linhas.values()))
+    faltando = set(CATEGORIAS_COR_RACA) - set(cor_raca.columns)
+    if faltando:
+        raise ValueError(f"JSON do IBGE: categorias de cor ou raça ausentes: {sorted(faltando)}")
+    print(f"[extract] {caminho.name}: {len(cor_raca)} municípios (Censo 2022, mulheres por cor ou raça)")
+    return cor_raca[["codigo_ibge7", *CATEGORIAS_COR_RACA]]

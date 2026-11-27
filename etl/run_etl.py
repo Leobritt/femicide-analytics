@@ -10,13 +10,14 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from etl.extract import extrair_ibge, extrair_territorios, extrair_vitimas
+from etl.extract import extrair_cor_raca, extrair_ibge, extrair_territorios, extrair_vitimas
 from etl.transform import transformar
 
 RAIZ = Path(__file__).resolve().parent.parent
 XLSX_VITIMAS = RAIZ / "data" / "raw" / "06_VIOLENCIA_CONTRA_MULHER_2025.xlsx"
 PDF_TERRITORIOS = RAIZ / "data" / "raw" / "Anexo_II_-_Relacao_Territorios_de_Identidade.pdf"
 CSV_IBGE = RAIZ / "data" / "raw" / "IBGE_CIDADES_BAHIA_MUNICIPIOS.csv"
+JSON_COR_RACA = RAIZ / "data" / "raw" / "IBGE_CENSO2022_MULHERES_COR_RACA_BAHIA.json"
 
 
 def main() -> None:
@@ -25,12 +26,15 @@ def main() -> None:
     parser.add_argument("--vitimas", default=str(XLSX_VITIMAS), help="planilha XLSX da SSP-BA")
     parser.add_argument("--territorios", default=str(PDF_TERRITORIOS), help="PDF do Anexo II")
     parser.add_argument("--ibge", default=str(CSV_IBGE), help="CSV do IBGE Cidades (todos os municípios da BA)")
+    parser.add_argument("--cor-raca", default=str(JSON_COR_RACA),
+                        help="JSON do IBGE: mulheres por cor ou raça (Censo 2022, tabela 9606)")
     args = parser.parse_args()
 
     vitimas_bruto, totais, ano = extrair_vitimas(args.vitimas)
     territorios_bruto = extrair_territorios(args.territorios)
     ibge_bruto = extrair_ibge(args.ibge)
-    tabelas, correcoes = transformar(vitimas_bruto, totais, ano, territorios_bruto, ibge_bruto)
+    cor_raca_bruto = extrair_cor_raca(args.cor_raca)
+    tabelas, correcoes = transformar(vitimas_bruto, totais, ano, territorios_bruto, ibge_bruto, cor_raca_bruto)
 
     processed = RAIZ / "data" / "processed"
     processed.mkdir(parents=True, exist_ok=True)

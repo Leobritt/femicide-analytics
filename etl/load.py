@@ -19,7 +19,9 @@ DESTINO = [
     ("vitimas", "fato_vitimas"),
 ]
 
-COLUNAS_IBGE = ["codigo_ibge7", "area_km2", "populacao_censo_2022", "populacao_estimada_2026"]
+COLUNAS_IBGE = ["codigo_ibge7", "area_km2", "populacao_censo_2022", "populacao_estimada_2026",
+                "mulheres_2022", "mulheres_brancas_2022", "mulheres_pretas_2022", "mulheres_pardas_2022",
+                "mulheres_amarelas_2022", "mulheres_indigenas_2022"]
 
 
 def _copiar(cur, df: pd.DataFrame, tabela: str) -> None:
