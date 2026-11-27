@@ -1,0 +1,7 @@
+# Copie para terraform.tfvars (fora do git) e preencha. Ou exporte TF_VAR_db_password.
+db_password = "TROQUE_ESTA_SENHA"
+
+# Para provisionar na VM da equipe em vez da máquina local:
+# docker_host  = "ssh://usuario@servidor"
+# bind_address = "0.0.0.0"
+# host_port    = 5432

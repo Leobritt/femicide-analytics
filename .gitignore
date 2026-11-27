@@ -7,3 +7,8 @@ logs/*.csv
 .ipynb_checkpoints/
 .streamlit/secrets.toml
 logs/*.log
+
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/terraform.tfvars
