@@ -420,15 +420,17 @@ e o registro de correções em `logs/correcoes_territorios.csv`. O aviso
 ### 11.4 O banco na VM da equipe
 
 O PostgreSQL 16 roda em um container na VM da equipe. O acesso externo passa pelo
-Traefik, que recebe as conexões em `db.filipe-oliveira.cloud:5432` com certificado
-Let's Encrypt e as repassa ao container. Por isso:
+Traefik, que recebe as conexões em `db.filipe-oliveira.cloud:15432` (entrypoint TCP
+`postgres`) com certificado Let's Encrypt e as repassa à porta 5432 do container. Por isso:
 
 - a conexão **precisa** usar SSL (`sslmode=require`); sem SSL, quem responde é o roteador
   HTTP do Traefik, e o erro é `expected authentication request from server, but received H`;
 - o `requirements.txt` fixa `psycopg2-binary==2.9.10`, que traz a libpq 16. A libpq 17
   (versões mais novas do pacote) anuncia o protocolo `postgresql` na negociação TLS (ALPN),
   o Traefik não reconhece e recusa a conexão com `tlsv1 alert no application protocol`.
-  Clientes JDBC, como o DBeaver, não fazem isso e conectam com qualquer configuração.
+  Clientes JDBC, como o DBeaver, não fazem isso e conectam com qualquer configuração. O
+  mesmo vale para o `psql`: o da imagem oficial `postgres:16` vem com libpq mais nova e
+  também é recusado.
 
 ### 11.4.1 Criar o banco com Terraform
 
@@ -462,7 +464,7 @@ cp .env.example .env               # Windows: copy .env.example .env
 Abrir o `.env` e preencher usuário e senha em `DATABASE_URL`:
 
 ```
-DATABASE_URL=postgres://USUARIO:SENHA@db.filipe-oliveira.cloud:5432/defaultdb?sslmode=require
+DATABASE_URL=postgres://USUARIO:SENHA@db.filipe-oliveira.cloud:15432/defaultdb?sslmode=require
 ```
 
 Se a senha tiver caracteres especiais (`@`, `:`, `/`, `#`, `%`, acentos), eles precisam
@@ -508,7 +510,7 @@ psql "$URL" -f sql/03_validacao.sql > logs/validacao_vps.txt
 ```
 
 Sem o `psql`, o mesmo arquivo pode ser executado em um cliente gráfico como DBeaver ou
-pgAdmin, com host `db.filipe-oliveira.cloud`, porta 5432, banco `defaultdb` e SSL ativado.
+pgAdmin, com host `db.filipe-oliveira.cloud`, porta 15432, banco `defaultdb` e SSL ativado.
 
 ### 11.8 Abrir o dashboard
 
@@ -546,7 +548,7 @@ no canto superior direito.
    versão para o 3.14, que vem selecionado por padrão) e colar em **Secrets**:
 
    ```toml
-   DATABASE_URL = "postgres://USUARIO:SENHA@db.filipe-oliveira.cloud:5432/defaultdb?sslmode=require"
+   DATABASE_URL = "postgres://USUARIO:SENHA@db.filipe-oliveira.cloud:15432/defaultdb?sslmode=require"
    ```
 
    O Streamlit expõe os *secrets* de primeiro nível como variáveis de ambiente, então o
